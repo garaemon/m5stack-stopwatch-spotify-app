@@ -153,6 +153,33 @@ void should_render_when_like_status_arrives() {
   TEST_ASSERT_TRUE(containsEffect(controller.handleLikeStatus(kTrackUri, true), EffectType::kRender));
 }
 
+void should_start_in_connecting_status() {
+  AppController controller;
+
+  TEST_ASSERT_TRUE(controller.connectionStatus() == ConnectionStatus::kConnecting);
+}
+
+void should_store_new_connection_status() {
+  AppController controller;
+
+  controller.handleConnectionStatus(ConnectionStatus::kWifiDisconnected);
+
+  TEST_ASSERT_TRUE(controller.connectionStatus() == ConnectionStatus::kWifiDisconnected);
+}
+
+void should_render_when_connection_status_changes() {
+  AppController controller;
+
+  TEST_ASSERT_TRUE(containsEffect(controller.handleConnectionStatus(ConnectionStatus::kOk), EffectType::kRender));
+}
+
+void should_not_render_when_connection_status_is_unchanged() {
+  AppController controller;
+  controller.handleConnectionStatus(ConnectionStatus::kOk);
+
+  TEST_ASSERT_TRUE(controller.handleConnectionStatus(ConnectionStatus::kOk).empty());
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -174,5 +201,9 @@ int main() {
   RUN_TEST(should_ignore_toggle_without_track);
   RUN_TEST(should_ignore_like_status_of_stale_track);
   RUN_TEST(should_render_when_like_status_arrives);
+  RUN_TEST(should_start_in_connecting_status);
+  RUN_TEST(should_store_new_connection_status);
+  RUN_TEST(should_render_when_connection_status_changes);
+  RUN_TEST(should_not_render_when_connection_status_is_unchanged);
   return UNITY_END();
 }

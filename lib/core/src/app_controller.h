@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "connection_status.h"
 #include "playback_state.h"
 
 enum class UserCommand { kPrevious, kNext, kToggleLike };
@@ -37,11 +38,14 @@ class AppController {
   std::vector<Effect> handleCommand(UserCommand command);
   // Ignores results for a track that is no longer playing.
   std::vector<Effect> handleLikeStatus(const std::string& trackUri, bool isLiked);
+  std::vector<Effect> handleConnectionStatus(ConnectionStatus status);
 
   const PlaybackState& playback() const { return playback_; }
   LikeStatus likeStatus() const { return likeStatus_; }
+  ConnectionStatus connectionStatus() const { return connectionStatus_; }
 
  private:
   PlaybackState playback_;
   LikeStatus likeStatus_ = LikeStatus::kUnknown;
+  ConnectionStatus connectionStatus_ = ConnectionStatus::kConnecting;
 };

@@ -47,3 +47,11 @@ std::vector<Effect> AppController::handleLikeStatus(const std::string& trackUri,
   likeStatus_ = isLiked ? LikeStatus::kLiked : LikeStatus::kNotLiked;
   return {{EffectType::kRender, ""}};
 }
+
+std::vector<Effect> AppController::handleConnectionStatus(ConnectionStatus status) {
+  if (status == connectionStatus_) {
+    return {};
+  }
+  connectionStatus_ = status;
+  return {{EffectType::kRender, ""}};
+}
