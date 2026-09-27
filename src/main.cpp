@@ -107,7 +107,7 @@ void applyNetworkResult(const NetworkResult& result) {
       applyEffects(controller.handleLikeStatus(result.trackUri, result.isLiked));
       break;
     case NetworkResultType::kArtwork:
-      view.setArtwork(decodeArtwork(result.artworkJpeg));
+      view.setArtwork(result.artwork);
       renderPlayer();
       break;
     case NetworkResultType::kConnectionStatus:

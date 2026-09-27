@@ -5,7 +5,9 @@
 #include <string>
 
 #include "app_controller.h"
+#include "artwork_decoder.h"
 #include "connection_status.h"
+#include "lru_cache.h"
 #include "playback_state.h"
 #include "spotify_client.h"
 #include "thread_safe_queue.h"
@@ -17,7 +19,7 @@ struct NetworkResult {
   PlaybackState playback;   // kPlayback
   std::string trackUri;     // kLikeStatus
   bool isLiked = false;     // kLikeStatus
-  std::string artworkJpeg;  // kArtwork; empty when the download failed.
+  ArtworkImage artwork;     // kArtwork; nullptr when the download failed.
   ConnectionStatus connectionStatus = ConnectionStatus::kConnecting;  // kConnectionStatus
 };
 
@@ -41,6 +43,8 @@ class NetworkWorker {
   void pollPlayback();
   void reportConnectionStatus(ConnectionStatus status);
   void fetchLikeStatus(const std::string& trackUri);
+  ArtworkImage loadArtwork(const std::string& url);
+  void prefetchNextArtwork();
 
   SpotifyClient& spotify_;
   ThreadSafeQueue<Effect> requests_;
@@ -48,4 +52,8 @@ class NetworkWorker {
   uint32_t nextPollMs_ = 0;
   std::atomic<uint32_t> pollIntervalMs_{3000};
   bool hasEverConnectedWifi_ = false;
+  // Holds the previous, current, and next artworks plus one spare.
+  LruCache<std::string, ArtworkImage> artworkCache_{4};
+  std::string lastPolledTrackUri_;
+  std::optional<uint32_t> prefetchDueMs_;
 };

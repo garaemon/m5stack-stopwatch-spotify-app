@@ -68,6 +68,8 @@ void SpotifyClient::begin() { refreshToken_ = loadRefreshToken(refreshToken_); }
 
 HttpResult SpotifyClient::fetchCurrentlyPlaying() { return sendApiRequest("GET", "/v1/me/player/currently-playing"); }
 
+HttpResult SpotifyClient::fetchQueue() { return sendApiRequest("GET", "/v1/me/player/queue"); }
+
 HttpResult SpotifyClient::fetchLibraryContains(const std::string& trackUri) {
   return sendApiRequest("GET", "/v1/me/library/contains?uris=" + trackUri);
 }

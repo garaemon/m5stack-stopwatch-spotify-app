@@ -20,6 +20,7 @@ class SpotifyClient {
   void begin();
 
   HttpResult fetchCurrentlyPlaying();
+  HttpResult fetchQueue();
   HttpResult fetchLibraryContains(const std::string& trackUri);
   HttpResult saveToLibrary(const std::string& trackUri);
   HttpResult removeFromLibrary(const std::string& trackUri);

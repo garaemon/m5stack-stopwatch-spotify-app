@@ -12,8 +12,11 @@ constexpr uint32_t kPollDelayAfterSkipMs = 300;
 constexpr uint32_t kIdleDelayMs = 20;
 // Used when a 429 response lacks a Retry-After header.
 constexpr uint32_t kDefaultRetryAfterSeconds = 30;
-// TLS handshakes in mbedTLS need a deep stack.
-constexpr uint32_t kTaskStackBytes = 16384;
+// Leaves time for the loop task to request the current artwork first, so
+// that prefetching the next one never delays it.
+constexpr uint32_t kPrefetchDelayMs = 500;
+// TLS handshakes in mbedTLS and JPEG decoding need a deep stack.
+constexpr uint32_t kTaskStackBytes = 20480;
 constexpr UBaseType_t kTaskPriority = 1;
 // Core 0 also runs the Wi-Fi stack; the Arduino loop owns core 1.
 constexpr BaseType_t kTaskCore = 0;
@@ -48,6 +51,11 @@ void NetworkWorker::runLoop() {
                                                      : ConnectionStatus::kConnecting);
       }
     }
+    const bool isPrefetchDue = prefetchDueMs_.has_value() && static_cast<int32_t>(millis() - *prefetchDueMs_) >= 0;
+    if (isWifiConnected && isPrefetchDue) {
+      prefetchDueMs_.reset();
+      prefetchNextArtwork();
+    }
     vTaskDelay(pdMS_TO_TICKS(kIdleDelayMs));
   }
 }
@@ -56,7 +64,7 @@ void NetworkWorker::handleRequest(const Effect& effect) {
   switch (effect.type) {
     case EffectType::kFetchArtwork: {
       NetworkResult result{NetworkResultType::kArtwork};
-      result.artworkJpeg = spotify_.downloadImage(effect.argument);
+      result.artwork = loadArtwork(effect.argument);
       results_.push(std::move(result));
       break;
     }
@@ -97,10 +105,40 @@ void NetworkWorker::pollPlayback() {
     return;
   }
   const std::optional<PlaybackState> playback = parseCurrentlyPlaying(response.body);
-  if (playback.has_value()) {
-    NetworkResult result{NetworkResultType::kPlayback};
-    result.playback = *playback;
-    results_.push(std::move(result));
+  if (!playback.has_value()) {
+    return;
+  }
+  if (playback->hasTrack && playback->trackUri != lastPolledTrackUri_) {
+    lastPolledTrackUri_ = playback->trackUri;
+    prefetchDueMs_ = millis() + kPrefetchDelayMs;
+  }
+  NetworkResult result{NetworkResultType::kPlayback};
+  result.playback = *playback;
+  results_.push(std::move(result));
+}
+
+ArtworkImage NetworkWorker::loadArtwork(const std::string& url) {
+  if (const std::optional<ArtworkImage> cachedArtwork = artworkCache_.get(url)) {
+    return *cachedArtwork;
+  }
+  const uint32_t startMs = millis();
+  ArtworkImage artwork = decodeArtwork(spotify_.downloadImage(url));
+  log_i("artwork loaded in %lu ms", static_cast<unsigned long>(millis() - startMs));
+  if (artwork != nullptr) {
+    artworkCache_.put(url, artwork);
+  }
+  return artwork;
+}
+
+void NetworkWorker::prefetchNextArtwork() {
+  const HttpResult response = spotify_.fetchQueue();
+  if (response.statusCode != 200) {
+    return;
+  }
+  const std::optional<std::string> nextArtworkUrl = parseNextQueuedArtworkUrl(response.body);
+  if (nextArtworkUrl.has_value() && !artworkCache_.contains(*nextArtworkUrl)) {
+    log_i("prefetching next artwork");
+    loadArtwork(*nextArtworkUrl);
   }
 }
 
