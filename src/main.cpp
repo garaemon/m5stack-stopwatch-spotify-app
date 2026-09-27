@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "app_controller.h"
+#include "display_power_policy.h"
 #include "network_worker.h"
 #include "player_view.h"
 #include "progress_estimator.h"
@@ -15,6 +16,10 @@ namespace {
 
 // 250 ms moves the progress ring about 2 px on a 3-minute track.
 constexpr uint32_t kProgressRenderIntervalMs = 250;
+constexpr uint32_t kActivePollIntervalMs = 3000;
+// Slow enough to save power, fast enough to wake soon after playback starts.
+constexpr uint32_t kDisplayOffPollIntervalMs = 10000;
+constexpr uint8_t kDimmedBrightness = 30;
 constexpr uint8_t kVibrationLevel = 128;
 constexpr uint32_t kVibrationDurationMs = 60;
 
@@ -25,6 +30,9 @@ NetworkWorker networkWorker(spotify);
 uint32_t playbackReceivedMs = 0;
 uint32_t lastRenderMs = 0;
 std::optional<uint32_t> vibrationStopMs;
+DisplayPowerPolicy powerPolicy;
+DisplayPower appliedDisplayPower = DisplayPower::kOn;
+uint8_t normalBrightness = 0;
 
 void startWifi() {
   WiFi.mode(WIFI_STA);
@@ -47,6 +55,9 @@ void stopVibrationWhenDue() {
 void applyEffects(const std::vector<Effect>& effects);
 
 void renderPlayer() {
+  if (appliedDisplayPower == DisplayPower::kOff) {
+    return;
+  }
   PlaybackState displayedPlayback = controller.playback();
   displayedPlayback.progressMs = estimateProgressMs(displayedPlayback, millis() - playbackReceivedMs);
   view.render(displayedPlayback, controller.likeStatus(), controller.connectionStatus());
@@ -105,10 +116,39 @@ void applyNetworkResult(const NetworkResult& result) {
   }
 }
 
+void applyDisplayPower(DisplayPower power) {
+  if (power == appliedDisplayPower) {
+    return;
+  }
+  const DisplayPower previousPower = appliedDisplayPower;
+  appliedDisplayPower = power;
+  if (power == DisplayPower::kOff) {
+    M5.Display.sleep();
+    networkWorker.setPollIntervalMs(kDisplayOffPollIntervalMs);
+    return;
+  }
+  if (previousPower == DisplayPower::kOff) {
+    M5.Display.wakeup();
+    networkWorker.setPollIntervalMs(kActivePollIntervalMs);
+    renderPlayer();
+  }
+  M5.Display.setBrightness(power == DisplayPower::kDimmed ? kDimmedBrightness : normalBrightness);
+}
+
+void handleUserCommand(UserCommand command) {
+  const bool wasDisplayOff = powerPolicy.registerInteraction(millis());
+  if (wasDisplayOff) {
+    applyDisplayPower(DisplayPower::kOn);
+    return;
+  }
+  applyEffects(controller.handleCommand(command));
+}
+
 }  // namespace
 
 void setup() {
   M5.begin(M5.config());
+  normalBrightness = M5.Display.getBrightness();
   view.begin();
   startWifi();
   spotify.begin();
@@ -121,12 +161,13 @@ void loop() {
   stopVibrationWhenDue();
   const std::optional<UserCommand> command = readUserCommand();
   if (command.has_value()) {
-    applyEffects(controller.handleCommand(*command));
+    handleUserCommand(*command);
   }
   while (const std::optional<NetworkResult> result = networkWorker.tryPopResult()) {
     applyNetworkResult(*result);
   }
   const bool isPlaying = controller.playback().hasTrack && controller.playback().isPlaying;
+  applyDisplayPower(powerPolicy.update(millis(), isPlaying));
   if (isPlaying && millis() - lastRenderMs >= kProgressRenderIntervalMs) {
     renderPlayer();
   }

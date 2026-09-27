@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <optional>
 #include <string>
 
@@ -30,6 +31,8 @@ class NetworkWorker {
   // Accepts only the network effects; the caller handles kVibrate and kRender.
   void request(const Effect& effect) { requests_.push(effect); }
   std::optional<NetworkResult> tryPopResult() { return results_.tryPop(); }
+  // Takes effect after the currently scheduled poll.
+  void setPollIntervalMs(uint32_t intervalMs) { pollIntervalMs_ = intervalMs; }
 
  private:
   static void runTask(void* worker);
@@ -43,5 +46,6 @@ class NetworkWorker {
   ThreadSafeQueue<Effect> requests_;
   ThreadSafeQueue<NetworkResult> results_;
   uint32_t nextPollMs_ = 0;
+  std::atomic<uint32_t> pollIntervalMs_{3000};
   bool hasEverConnectedWifi_ = false;
 };

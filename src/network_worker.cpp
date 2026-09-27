@@ -7,7 +7,6 @@
 
 namespace {
 
-constexpr uint32_t kPollIntervalMs = 3000;
 // Spotify keeps reporting the old track for a moment after a skip.
 constexpr uint32_t kPollDelayAfterSkipMs = 300;
 constexpr uint32_t kIdleDelayMs = 20;
@@ -38,7 +37,7 @@ void NetworkWorker::runLoop() {
       }
     }
     if (static_cast<int32_t>(millis() - nextPollMs_) >= 0) {
-      nextPollMs_ = millis() + kPollIntervalMs;
+      nextPollMs_ = millis() + pollIntervalMs_;
       hasEverConnectedWifi_ = hasEverConnectedWifi_ || isWifiConnected;
       if (isWifiConnected) {
         pollPlayback();
