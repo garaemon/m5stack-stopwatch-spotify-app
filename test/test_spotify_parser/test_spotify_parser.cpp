@@ -43,6 +43,23 @@ const char* const kEpisodeJson = R"({
   "item": null
 })";
 
+const char* const kQueueJson = R"({
+  "currently_playing": {"uri": "spotify:track:now"},
+  "queue": [
+    {"uri": "spotify:track:next", "album": {"images": [
+      {"url": "https://i.scdn.co/image/next-large", "width": 640, "height": 640},
+      {"url": "https://i.scdn.co/image/next-small", "width": 64, "height": 64}
+    ]}},
+    {"uri": "spotify:track:later", "album": {"images": [
+      {"url": "https://i.scdn.co/image/later", "width": 640, "height": 640}
+    ]}}
+  ]
+})";
+
+const char* const kQueueStartingWithEpisodeJson = R"({
+  "queue": [{"uri": "spotify:episode:ep", "images": [{"url": "https://i.scdn.co/image/ep", "width": 640}]}]
+})";
+
 PlaybackState parseTrackJson() { return parseCurrentlyPlaying(kTrackJson).value(); }
 
 }  // namespace
@@ -113,6 +130,22 @@ void should_return_nullopt_when_access_token_missing() {
   TEST_ASSERT_FALSE(parseTokenResponse(R"({"error":"invalid_grant"})").has_value());
 }
 
+void should_return_artwork_of_first_queued_track() {
+  TEST_ASSERT_EQUAL_STRING("https://i.scdn.co/image/next-large", parseNextQueuedArtworkUrl(kQueueJson).value().c_str());
+}
+
+void should_return_nullopt_for_empty_queue() {
+  TEST_ASSERT_FALSE(parseNextQueuedArtworkUrl(R"({"queue": []})").has_value());
+}
+
+void should_return_nullopt_when_queue_starts_with_episode() {
+  TEST_ASSERT_FALSE(parseNextQueuedArtworkUrl(kQueueStartingWithEpisodeJson).has_value());
+}
+
+void should_return_nullopt_for_invalid_queue_json() {
+  TEST_ASSERT_FALSE(parseNextQueuedArtworkUrl("{broken").has_value());
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -137,5 +170,9 @@ int main() {
   RUN_TEST(should_read_expires_in);
   RUN_TEST(should_read_rotated_refresh_token);
   RUN_TEST(should_return_nullopt_when_access_token_missing);
+  RUN_TEST(should_return_artwork_of_first_queued_track);
+  RUN_TEST(should_return_nullopt_for_empty_queue);
+  RUN_TEST(should_return_nullopt_when_queue_starts_with_episode);
+  RUN_TEST(should_return_nullopt_for_invalid_queue_json);
   return UNITY_END();
 }

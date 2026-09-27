@@ -20,6 +20,10 @@ constexpr int kTargetArtworkSizePx = 466;
 // Returns a state with hasTrack == false for podcasts, ads, or an empty body.
 std::optional<PlaybackState> parseCurrentlyPlaying(const std::string& json);
 
+// Returns the artwork URL of the first track in GET /me/player/queue, or
+// std::nullopt when the queue is empty, starts with an episode, or is invalid.
+std::optional<std::string> parseNextQueuedArtworkUrl(const std::string& json);
+
 // Parses the body of GET /me/library/contains for a single URI.
 std::optional<bool> parseLibraryContains(const std::string& json);
 

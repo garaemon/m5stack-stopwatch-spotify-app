@@ -68,6 +68,21 @@ std::optional<PlaybackState> parseCurrentlyPlaying(const std::string& json) {
   return playback;
 }
 
+std::optional<std::string> parseNextQueuedArtworkUrl(const std::string& json) {
+  // The queue lists up to 20 full track objects; keep only what we read.
+  JsonDocument filter;
+  filter["queue"][0]["album"]["images"] = true;
+  JsonDocument document;
+  if (deserializeJson(document, json, DeserializationOption::Filter(filter)) != DeserializationError::Ok) {
+    return std::nullopt;
+  }
+  JsonArrayConst images = document["queue"][0]["album"]["images"];
+  if (images.isNull() || images.size() == 0) {
+    return std::nullopt;
+  }
+  return selectArtworkUrl(images);
+}
+
 std::optional<bool> parseLibraryContains(const std::string& json) {
   JsonDocument document;
   if (deserializeJson(document, json) != DeserializationError::Ok) {
