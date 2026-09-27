@@ -90,7 +90,7 @@ std::string SpotifyClient::downloadImage(const std::string& url) {
   const int statusCode = http.GET();
   const std::string jpegBytes = statusCode == HTTP_CODE_OK ? readBody(http) : std::string();
   http.end();
-  Serial.printf("artwork status=%d bytes=%u\n", statusCode, static_cast<unsigned>(jpegBytes.size()));
+  log_i("artwork status=%d bytes=%u", statusCode, static_cast<unsigned>(jpegBytes.size()));
   return jpegBytes;
 }
 
@@ -107,7 +107,7 @@ bool SpotifyClient::refreshAccessToken() {
   const int statusCode = http.POST(form);
   const std::string body = readBody(http);
   http.end();
-  Serial.printf("token refresh status=%d\n", statusCode);
+  log_i("token refresh status=%d", statusCode);
   const std::optional<AccessToken> token = parseTokenResponse(body);
   if (statusCode != HTTP_CODE_OK || !token.has_value()) {
     return false;

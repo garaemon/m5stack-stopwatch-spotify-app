@@ -103,7 +103,7 @@ std::optional<UserCommand> readUserCommand() {
 
 void pollPlayback() {
   const HttpResult result = spotify.fetchCurrentlyPlaying();
-  Serial.printf("currently-playing status=%d\n", result.statusCode);
+  log_i("currently-playing status=%d", result.statusCode);
   if (result.statusCode != 200 && result.statusCode != 204) {
     return;
   }
