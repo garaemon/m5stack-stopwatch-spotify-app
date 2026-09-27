@@ -19,6 +19,31 @@ constexpr float kRingStartAngleDeg = -90.0f;
 const uint16_t kSpotifyGreen = lgfx::color565(30, 215, 96);
 const uint16_t kHeartRed = lgfx::color565(233, 30, 99);
 const uint16_t kRingTrackColor = lgfx::color565(60, 60, 60);
+const uint16_t kBadgeColor = lgfx::color565(200, 60, 40);
+constexpr int kBadgeTopPx = 40;
+constexpr int kBadgeHeightPx = 32;
+constexpr int kBadgePaddingPx = 16;
+constexpr int kMessageLineGapPx = 36;
+
+// Returns a short label for a status the user should notice, or nullptr.
+const char* describeConnectionProblem(ConnectionStatus status) {
+  switch (status) {
+    case ConnectionStatus::kWifiDisconnected:
+      return "Wi-Fi disconnected";
+    case ConnectionStatus::kRateLimited:
+      return "Rate limited";
+    case ConnectionStatus::kServerError:
+      return "Spotify error";
+    case ConnectionStatus::kNetworkError:
+      return "Network error";
+    case ConnectionStatus::kAuthFailed:
+      return "Spotify login expired";
+    case ConnectionStatus::kConnecting:
+    case ConnectionStatus::kOk:
+      return nullptr;
+  }
+  return nullptr;
+}
 
 // Scales one pixel of an M5Canvas buffer, which stores RGB565 byte-swapped.
 uint16_t scaleSwappedRgb565(uint16_t swappedPixel, int brightness) {
@@ -70,9 +95,18 @@ void PlayerView::setArtwork(const std::string& jpegBytes) {
   shadeBottomHalf(artworkCanvas_);
 }
 
-void PlayerView::render(const PlaybackState& playback, LikeStatus likeStatus) {
+void PlayerView::render(const PlaybackState& playback, LikeStatus likeStatus, ConnectionStatus connectionStatus) {
+  const char* problemLabel = describeConnectionProblem(connectionStatus);
+  if (connectionStatus == ConnectionStatus::kAuthFailed) {
+    showMessage(problemLabel, "Run tools/spotify_auth.py");
+    return;
+  }
   if (!playback.hasTrack) {
-    showMessage("Nothing playing");
+    if (connectionStatus == ConnectionStatus::kConnecting) {
+      showMessage("Connecting...");
+    } else {
+      showMessage(problemLabel != nullptr ? problemLabel : "Nothing playing");
+    }
     return;
   }
   artworkCanvas_.pushSprite(&frameCanvas_, 0, 0);
@@ -82,16 +116,37 @@ void PlayerView::render(const PlaybackState& playback, LikeStatus likeStatus) {
   if (!playback.isPlaying) {
     drawPauseIcon();
   }
+  if (problemLabel != nullptr) {
+    drawStatusBadge(problemLabel);
+  }
   frameCanvas_.pushSprite(&M5.Display, 0, 0);
 }
 
-void PlayerView::showMessage(const char* message) {
+void PlayerView::showMessage(const char* message, const char* detail) {
+  const int32_t centerX = frameCanvas_.width() / 2;
+  const int32_t centerY = frameCanvas_.height() / 2;
+  const int32_t messageY = detail != nullptr ? centerY - kMessageLineGapPx / 2 : centerY;
   frameCanvas_.fillScreen(TFT_BLACK);
-  frameCanvas_.setFont(&fonts::lgfxJapanGothicP_20);
-  frameCanvas_.setTextColor(TFT_WHITE);
   frameCanvas_.setTextDatum(datum_t::middle_center);
-  frameCanvas_.drawString(message, frameCanvas_.width() / 2, frameCanvas_.height() / 2);
+  frameCanvas_.setFont(&fonts::lgfxJapanGothicP_24);
+  frameCanvas_.setTextColor(TFT_WHITE);
+  frameCanvas_.drawString(message, centerX, messageY);
+  if (detail != nullptr) {
+    frameCanvas_.setFont(&fonts::lgfxJapanGothicP_20);
+    frameCanvas_.setTextColor(TFT_LIGHTGREY);
+    frameCanvas_.drawString(detail, centerX, messageY + kMessageLineGapPx);
+  }
   frameCanvas_.pushSprite(&M5.Display, 0, 0);
+}
+
+void PlayerView::drawStatusBadge(const char* label) {
+  frameCanvas_.setFont(&fonts::lgfxJapanGothicP_20);
+  const int32_t badgeWidth = frameCanvas_.textWidth(label) + kBadgePaddingPx * 2;
+  const int32_t badgeLeft = (frameCanvas_.width() - badgeWidth) / 2;
+  frameCanvas_.fillRoundRect(badgeLeft, kBadgeTopPx, badgeWidth, kBadgeHeightPx, kBadgeHeightPx / 2, kBadgeColor);
+  frameCanvas_.setTextDatum(datum_t::middle_center);
+  frameCanvas_.setTextColor(TFT_WHITE);
+  frameCanvas_.drawString(label, frameCanvas_.width() / 2, kBadgeTopPx + kBadgeHeightPx / 2);
 }
 
 void PlayerView::drawProgressRing(const PlaybackState& playback) {

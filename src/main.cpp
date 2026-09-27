@@ -15,7 +15,6 @@ namespace {
 
 // 250 ms moves the progress ring about 2 px on a 3-minute track.
 constexpr uint32_t kProgressRenderIntervalMs = 250;
-constexpr uint32_t kWifiTimeoutMs = 20000;
 constexpr uint8_t kVibrationLevel = 128;
 constexpr uint32_t kVibrationDurationMs = 60;
 
@@ -27,17 +26,10 @@ uint32_t playbackReceivedMs = 0;
 uint32_t lastRenderMs = 0;
 std::optional<uint32_t> vibrationStopMs;
 
-bool connectWifi() {
+void startWifi() {
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  const uint32_t startMs = millis();
-  while (WiFi.status() != WL_CONNECTED) {
-    if (millis() - startMs > kWifiTimeoutMs) {
-      return false;
-    }
-    delay(200);
-  }
-  return true;
 }
 
 void startVibration() {
@@ -57,7 +49,7 @@ void applyEffects(const std::vector<Effect>& effects);
 void renderPlayer() {
   PlaybackState displayedPlayback = controller.playback();
   displayedPlayback.progressMs = estimateProgressMs(displayedPlayback, millis() - playbackReceivedMs);
-  view.render(displayedPlayback, controller.likeStatus());
+  view.render(displayedPlayback, controller.likeStatus(), controller.connectionStatus());
   lastRenderMs = millis();
 }
 
@@ -107,6 +99,9 @@ void applyNetworkResult(const NetworkResult& result) {
       view.setArtwork(result.artworkJpeg);
       renderPlayer();
       break;
+    case NetworkResultType::kConnectionStatus:
+      applyEffects(controller.handleConnectionStatus(result.connectionStatus));
+      break;
   }
 }
 
@@ -115,14 +110,10 @@ void applyNetworkResult(const NetworkResult& result) {
 void setup() {
   M5.begin(M5.config());
   view.begin();
-  view.showMessage("Connecting Wi-Fi...");
-  if (!connectWifi()) {
-    view.showMessage("Wi-Fi failed");
-    return;
-  }
+  startWifi();
   spotify.begin();
   networkWorker.start();
-  view.showMessage("Waiting for Spotify...");
+  renderPlayer();
 }
 
 void loop() {
