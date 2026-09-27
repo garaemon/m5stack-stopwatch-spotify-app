@@ -22,9 +22,28 @@ std::vector<Effect> AppController::handleCommand(UserCommand command) {
       return {{EffectType::kSkipNext, ""}};
     case UserCommand::kPrevious:
       return {{EffectType::kSkipPrevious, ""}};
+    case UserCommand::kRestartTrack:
+      return {{EffectType::kSeekToStart, ""}};
+    case UserCommand::kTogglePlayback:
+      return togglePlayback();
     case UserCommand::kToggleLike:
-      break;
+      return toggleLike();
   }
+  return {};
+}
+
+std::vector<Effect> AppController::togglePlayback() {
+  if (!playback_.hasTrack) {
+    return {};
+  }
+  // Show the new state at once; the poll that follows the request corrects
+  // it if Spotify refused, for example when no device is active.
+  playback_.isPlaying = !playback_.isPlaying;
+  const EffectType playbackEffect = playback_.isPlaying ? EffectType::kResume : EffectType::kPause;
+  return {{EffectType::kRender, ""}, {playbackEffect, ""}};
+}
+
+std::vector<Effect> AppController::toggleLike() {
   if (!playback_.hasTrack || likeStatus_ == LikeStatus::kUnknown) {
     return {};
   }

@@ -6,7 +6,7 @@
 #include "connection_status.h"
 #include "playback_state.h"
 
-enum class UserCommand { kPrevious, kNext, kToggleLike };
+enum class UserCommand { kRestartTrack, kPrevious, kTogglePlayback, kNext, kToggleLike };
 
 enum class LikeStatus { kUnknown, kLiked, kNotLiked };
 
@@ -17,6 +17,9 @@ enum class EffectType {
   kRemoveTrack,      // argument: track URI
   kSkipNext,
   kSkipPrevious,
+  kSeekToStart,
+  kPause,
+  kResume,
   kVibrate,
   kRender,
 };
@@ -45,6 +48,9 @@ class AppController {
   ConnectionStatus connectionStatus() const { return connectionStatus_; }
 
  private:
+  std::vector<Effect> toggleLike();
+  std::vector<Effect> togglePlayback();
+
   PlaybackState playback_;
   LikeStatus likeStatus_ = LikeStatus::kUnknown;
   ConnectionStatus connectionStatus_ = ConnectionStatus::kConnecting;

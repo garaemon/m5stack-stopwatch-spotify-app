@@ -180,6 +180,47 @@ void should_not_render_when_connection_status_is_unchanged() {
   TEST_ASSERT_TRUE(controller.handleConnectionStatus(ConnectionStatus::kOk).empty());
 }
 
+void should_seek_to_start_on_restart_command() {
+  AppController controller = makeControllerPlaying(false);
+
+  TEST_ASSERT_TRUE(containsEffect(controller.handleCommand(UserCommand::kRestartTrack), EffectType::kSeekToStart));
+}
+
+void should_pause_when_toggling_playing_track() {
+  AppController controller = makeControllerPlaying(false);
+
+  TEST_ASSERT_TRUE(containsEffect(controller.handleCommand(UserCommand::kTogglePlayback), EffectType::kPause));
+}
+
+void should_mark_paused_optimistically_when_pausing() {
+  AppController controller = makeControllerPlaying(false);
+
+  controller.handleCommand(UserCommand::kTogglePlayback);
+
+  TEST_ASSERT_FALSE(controller.playback().isPlaying);
+}
+
+void should_resume_when_toggling_paused_track() {
+  AppController controller;
+  PlaybackState pausedTrack = makeTrack(kTrackUri, "https://art/1");
+  pausedTrack.isPlaying = false;
+  controller.handlePlayback(pausedTrack);
+
+  TEST_ASSERT_TRUE(containsEffect(controller.handleCommand(UserCommand::kTogglePlayback), EffectType::kResume));
+}
+
+void should_render_when_toggling_playback() {
+  AppController controller = makeControllerPlaying(false);
+
+  TEST_ASSERT_TRUE(containsEffect(controller.handleCommand(UserCommand::kTogglePlayback), EffectType::kRender));
+}
+
+void should_ignore_toggle_playback_without_track() {
+  AppController controller;
+
+  TEST_ASSERT_TRUE(controller.handleCommand(UserCommand::kTogglePlayback).empty());
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -205,5 +246,11 @@ int main() {
   RUN_TEST(should_store_new_connection_status);
   RUN_TEST(should_render_when_connection_status_changes);
   RUN_TEST(should_not_render_when_connection_status_is_unchanged);
+  RUN_TEST(should_seek_to_start_on_restart_command);
+  RUN_TEST(should_pause_when_toggling_playing_track);
+  RUN_TEST(should_mark_paused_optimistically_when_pausing);
+  RUN_TEST(should_resume_when_toggling_paused_track);
+  RUN_TEST(should_render_when_toggling_playback);
+  RUN_TEST(should_ignore_toggle_playback_without_track);
   return UNITY_END();
 }
