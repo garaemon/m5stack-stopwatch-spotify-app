@@ -28,6 +28,10 @@ std::unique_ptr<NetworkClientSecure> createTlsClient() {
   return tlsClient;
 }
 
+// Each request opens a fresh TLS client, so ask the server to close the
+// connection; otherwise a body without Content-Length never ends.
+void disableConnectionReuse(HTTPClient& http) { http.setReuse(false); }
+
 std::string readBody(HTTPClient& http) {
   const String body = http.getString();
   return std::string(body.c_str(), body.length());
@@ -84,6 +88,7 @@ std::string SpotifyClient::downloadImage(const std::string& url) {
   const auto tlsClient = createTlsClient();
   HTTPClient http;
   http.setTimeout(kHttpTimeoutMs);
+  disableConnectionReuse(http);
   if (!http.begin(*tlsClient, url.c_str())) {
     return {};
   }
@@ -98,6 +103,7 @@ bool SpotifyClient::refreshAccessToken() {
   const auto tlsClient = createTlsClient();
   HTTPClient http;
   http.setTimeout(kHttpTimeoutMs);
+  disableConnectionReuse(http);
   if (!http.begin(*tlsClient, kTokenUrl)) {
     return false;
   }
@@ -145,6 +151,7 @@ HttpResult SpotifyClient::sendAuthorizedRequest(const char* method, const std::s
   const auto tlsClient = createTlsClient();
   HTTPClient http;
   http.setTimeout(kHttpTimeoutMs);
+  disableConnectionReuse(http);
   const std::string url = std::string(kApiBaseUrl) + path;
   if (!http.begin(*tlsClient, url.c_str())) {
     return {-1, {}};
@@ -158,7 +165,11 @@ HttpResult SpotifyClient::sendAuthorizedRequest(const char* method, const std::s
   const char* collectedHeaderKeys[] = {"Retry-After"};
   http.collectHeaders(collectedHeaderKeys, 1);
   const int statusCode = http.sendRequest(method);
-  HttpResult result{statusCode, readBody(http), static_cast<uint32_t>(http.header("Retry-After").toInt())};
+  // A 204 carries no body; reading one anyway blocks until the server
+  // drops the connection, which froze polling while nothing played.
+  const bool hasBody = statusCode > 0 && statusCode != HTTP_CODE_NO_CONTENT;
+  HttpResult result{statusCode, hasBody ? readBody(http) : std::string(),
+                    static_cast<uint32_t>(http.header("Retry-After").toInt())};
   http.end();
   return result;
 }
