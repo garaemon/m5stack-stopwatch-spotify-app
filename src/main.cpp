@@ -1,14 +1,38 @@
 #include <M5Unified.h>
+#include <WiFi.h>
+
+#include <optional>
+#include <vector>
+
+#include "app_controller.h"
+#include "player_view.h"
+#include "secrets.h"
+#include "spotify_client.h"
+#include "spotify_parser.h"
 
 namespace {
 
+constexpr uint32_t kPollIntervalMs = 3000;
+constexpr uint32_t kWifiTimeoutMs = 20000;
 constexpr uint8_t kVibrationLevel = 128;
-constexpr uint32_t kVibrationDurationMs = 80;
+constexpr uint32_t kVibrationDurationMs = 60;
 
-void drawCenteredLine(const char* text, int lineOffset) {
-  const int centerX = M5.Display.width() / 2;
-  const int centerY = M5.Display.height() / 2;
-  M5.Display.drawCenterString(text, centerX, centerY + lineOffset * 32);
+AppController controller;
+PlayerView view;
+SpotifyClient spotify(SPOTIFY_CLIENT_ID, SPOTIFY_REFRESH_TOKEN);
+uint32_t lastPollMs = 0;
+
+bool connectWifi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  const uint32_t startMs = millis();
+  while (WiFi.status() != WL_CONNECTED) {
+    if (millis() - startMs > kWifiTimeoutMs) {
+      return false;
+    }
+    delay(200);
+  }
+  return true;
 }
 
 void pulseVibration() {
@@ -17,44 +41,102 @@ void pulseVibration() {
   M5.Power.setVibration(0);
 }
 
-void showEvent(const char* text) {
-  M5.Display.fillRect(0, M5.Display.height() / 2 + 40, M5.Display.width(), 40, TFT_BLACK);
-  drawCenteredLine(text, 2);
-  Serial.println(text);
+void applyEffects(const std::vector<Effect>& effects);
+
+void fetchLikeStatus(const std::string& trackUri) {
+  const HttpResult result = spotify.fetchLibraryContains(trackUri);
+  const std::optional<bool> isLiked = parseLibraryContains(result.body);
+  if (result.statusCode == 200 && isLiked.has_value()) {
+    applyEffects(controller.handleLikeStatus(trackUri, *isLiked));
+  }
+}
+
+void applyEffect(const Effect& effect) {
+  switch (effect.type) {
+    case EffectType::kFetchArtwork:
+      view.setArtwork(spotify.downloadImage(effect.argument));
+      break;
+    case EffectType::kFetchLikeStatus:
+      fetchLikeStatus(effect.argument);
+      break;
+    case EffectType::kSaveTrack:
+      spotify.saveToLibrary(effect.argument);
+      break;
+    case EffectType::kRemoveTrack:
+      spotify.removeFromLibrary(effect.argument);
+      break;
+    case EffectType::kSkipNext:
+      spotify.skipToNext();
+      lastPollMs = 0;  // Poll right away so that the new track shows up quickly.
+      break;
+    case EffectType::kSkipPrevious:
+      spotify.skipToPrevious();
+      lastPollMs = 0;
+      break;
+    case EffectType::kVibrate:
+      pulseVibration();
+      break;
+    case EffectType::kRender:
+      view.render(controller.playback(), controller.likeStatus());
+      break;
+  }
+}
+
+void applyEffects(const std::vector<Effect>& effects) {
+  for (const Effect& effect : effects) {
+    applyEffect(effect);
+  }
+}
+
+std::optional<UserCommand> readUserCommand() {
+  if (M5.BtnA.wasClicked()) {
+    return UserCommand::kPrevious;
+  }
+  if (M5.BtnB.wasClicked()) {
+    return UserCommand::kNext;
+  }
+  if (M5.Touch.getDetail().wasClicked()) {
+    return UserCommand::kToggleLike;
+  }
+  return std::nullopt;
+}
+
+void pollPlayback() {
+  const HttpResult result = spotify.fetchCurrentlyPlaying();
+  Serial.printf("currently-playing status=%d\n", result.statusCode);
+  if (result.statusCode != 200 && result.statusCode != 204) {
+    return;
+  }
+  const std::optional<PlaybackState> playback = parseCurrentlyPlaying(result.body);
+  if (playback.has_value()) {
+    applyEffects(controller.handlePlayback(*playback));
+  }
 }
 
 }  // namespace
 
 void setup() {
-  auto config = M5.config();
-  M5.begin(config);
-  M5.Display.setTextSize(2);
-  M5.Display.fillScreen(TFT_BLACK);
-  char boardText[32];
-  snprintf(boardText, sizeof(boardText), "board=%d %dx%d", static_cast<int>(M5.getBoard()),
-           M5.Display.width(), M5.Display.height());
-  drawCenteredLine("Hello StopWatch", -1);
-  drawCenteredLine(boardText, 0);
-  Serial.println(boardText);
-  Serial.printf("psram=%u\n", ESP.getPsramSize());
+  M5.begin(M5.config());
+  view.begin();
+  view.showMessage("Connecting Wi-Fi...");
+  if (!connectWifi()) {
+    view.showMessage("Wi-Fi failed");
+    return;
+  }
+  view.showMessage("Waiting for Spotify...");
 }
 
 void loop() {
   M5.update();
-  if (M5.BtnA.wasPressed()) {
-    showEvent("BtnA");
-    pulseVibration();
+  const std::optional<UserCommand> command = readUserCommand();
+  if (command.has_value()) {
+    applyEffects(controller.handleCommand(*command));
   }
-  if (M5.BtnB.wasPressed()) {
-    showEvent("BtnB");
-    pulseVibration();
-  }
-  const auto touch = M5.Touch.getDetail();
-  if (touch.wasClicked()) {
-    char touchText[32];
-    snprintf(touchText, sizeof(touchText), "tap %d,%d", touch.x, touch.y);
-    showEvent(touchText);
-    pulseVibration();
+  // TODO(garaemon): Move HTTP calls to a separate FreeRTOS task; each
+  // request blocks button handling for a few hundred milliseconds.
+  if (WiFi.status() == WL_CONNECTED && millis() - lastPollMs >= kPollIntervalMs) {
+    lastPollMs = millis();
+    pollPlayback();
   }
   delay(10);
 }
