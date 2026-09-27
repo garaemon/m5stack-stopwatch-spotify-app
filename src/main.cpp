@@ -6,6 +6,7 @@
 
 #include "app_controller.h"
 #include "display_power_policy.h"
+#include "double_tap_detector.h"
 #include "network_worker.h"
 #include "player_view.h"
 #include "progress_estimator.h"
@@ -21,6 +22,9 @@ constexpr uint32_t kActivePollIntervalMs = 3000;
 constexpr uint32_t kDisplayOffPollIntervalMs = 10000;
 constexpr uint8_t kDimmedBrightness = 30;
 constexpr uint8_t kVibrationLevel = 128;
+// Buttons wait this long after a release before deciding single vs double
+// click; M5Unified's 500 ms default made play/pause feel sluggish.
+constexpr uint32_t kButtonClickDecisionMs = 350;
 constexpr uint32_t kVibrationDurationMs = 60;
 
 AppController controller;
@@ -31,6 +35,7 @@ uint32_t playbackReceivedMs = 0;
 uint32_t lastRenderMs = 0;
 std::optional<uint32_t> vibrationStopMs;
 DisplayPowerPolicy powerPolicy;
+DoubleTapDetector doubleTapDetector;
 DisplayPower appliedDisplayPower = DisplayPower::kOn;
 uint8_t normalBrightness = 0;
 
@@ -84,14 +89,20 @@ void applyEffects(const std::vector<Effect>& effects) {
   }
 }
 
-std::optional<UserCommand> readUserCommand() {
-  if (M5.BtnA.wasClicked()) {
+std::optional<UserCommand> readUserCommand(bool isTapped) {
+  if (M5.BtnA.wasSingleClicked()) {
+    return UserCommand::kRestartTrack;
+  }
+  if (M5.BtnA.wasDoubleClicked()) {
     return UserCommand::kPrevious;
   }
-  if (M5.BtnB.wasClicked()) {
+  if (M5.BtnB.wasSingleClicked()) {
+    return UserCommand::kTogglePlayback;
+  }
+  if (M5.BtnB.wasDoubleClicked()) {
     return UserCommand::kNext;
   }
-  if (M5.Touch.getDetail().wasClicked()) {
+  if (isTapped && doubleTapDetector.registerTap(millis())) {
     return UserCommand::kToggleLike;
   }
   return std::nullopt;
@@ -135,13 +146,22 @@ void applyDisplayPower(DisplayPower power) {
   M5.Display.setBrightness(power == DisplayPower::kDimmed ? kDimmedBrightness : normalBrightness);
 }
 
-void handleUserCommand(UserCommand command) {
-  const bool wasDisplayOff = powerPolicy.registerInteraction(millis());
-  if (wasDisplayOff) {
+void handleUserInput() {
+  const bool isTapped = M5.Touch.getDetail().wasClicked();
+  const bool hasInput = isTapped || M5.BtnA.wasDecideClickCount() || M5.BtnB.wasDecideClickCount();
+  if (!hasInput) {
+    return;
+  }
+  // Any input on a dark display only wakes it, even a lone tap that would
+  // otherwise do nothing.
+  if (powerPolicy.registerInteraction(millis())) {
     applyDisplayPower(DisplayPower::kOn);
     return;
   }
-  applyEffects(controller.handleCommand(command));
+  const std::optional<UserCommand> command = readUserCommand(isTapped);
+  if (command.has_value()) {
+    applyEffects(controller.handleCommand(*command));
+  }
 }
 
 }  // namespace
@@ -149,6 +169,8 @@ void handleUserCommand(UserCommand command) {
 void setup() {
   M5.begin(M5.config());
   normalBrightness = M5.Display.getBrightness();
+  M5.BtnA.setHoldThresh(kButtonClickDecisionMs);
+  M5.BtnB.setHoldThresh(kButtonClickDecisionMs);
   view.begin();
   startWifi();
   spotify.begin();
@@ -159,10 +181,7 @@ void setup() {
 void loop() {
   M5.update();
   stopVibrationWhenDue();
-  const std::optional<UserCommand> command = readUserCommand();
-  if (command.has_value()) {
-    handleUserCommand(*command);
-  }
+  handleUserInput();
   while (const std::optional<NetworkResult> result = networkWorker.tryPopResult()) {
     applyNetworkResult(*result);
   }

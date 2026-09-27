@@ -7,8 +7,8 @@
 
 namespace {
 
-// Spotify keeps reporting the old track for a moment after a skip.
-constexpr uint32_t kPollDelayAfterSkipMs = 300;
+// Spotify keeps reporting the old state for a moment after a player command.
+constexpr uint32_t kPollDelayAfterPlayerCommandMs = 300;
 constexpr uint32_t kIdleDelayMs = 20;
 // Used when a 429 response lacks a Retry-After header.
 constexpr uint32_t kDefaultRetryAfterSeconds = 30;
@@ -79,11 +79,23 @@ void NetworkWorker::handleRequest(const Effect& effect) {
       break;
     case EffectType::kSkipNext:
       spotify_.skipToNext();
-      nextPollMs_ = millis() + kPollDelayAfterSkipMs;
+      nextPollMs_ = millis() + kPollDelayAfterPlayerCommandMs;
       break;
     case EffectType::kSkipPrevious:
       spotify_.skipToPrevious();
-      nextPollMs_ = millis() + kPollDelayAfterSkipMs;
+      nextPollMs_ = millis() + kPollDelayAfterPlayerCommandMs;
+      break;
+    case EffectType::kSeekToStart:
+      spotify_.seekToStart();
+      nextPollMs_ = millis() + kPollDelayAfterPlayerCommandMs;
+      break;
+    case EffectType::kPause:
+      spotify_.pausePlayback();
+      nextPollMs_ = millis() + kPollDelayAfterPlayerCommandMs;
+      break;
+    case EffectType::kResume:
+      spotify_.resumePlayback();
+      nextPollMs_ = millis() + kPollDelayAfterPlayerCommandMs;
       break;
     case EffectType::kVibrate:
     case EffectType::kRender:

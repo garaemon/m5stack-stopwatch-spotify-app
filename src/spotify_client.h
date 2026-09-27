@@ -26,6 +26,9 @@ class SpotifyClient {
   HttpResult removeFromLibrary(const std::string& trackUri);
   HttpResult skipToNext();
   HttpResult skipToPrevious();
+  HttpResult seekToStart();
+  HttpResult pausePlayback();
+  HttpResult resumePlayback();
 
   // Returns the JPEG bytes at an i.scdn.co URL, or an empty string on failure.
   std::string downloadImage(const std::string& url);

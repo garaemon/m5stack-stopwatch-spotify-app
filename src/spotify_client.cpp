@@ -86,6 +86,12 @@ HttpResult SpotifyClient::skipToNext() { return sendApiRequest("POST", "/v1/me/p
 
 HttpResult SpotifyClient::skipToPrevious() { return sendApiRequest("POST", "/v1/me/player/previous"); }
 
+HttpResult SpotifyClient::seekToStart() { return sendApiRequest("PUT", "/v1/me/player/seek?position_ms=0"); }
+
+HttpResult SpotifyClient::pausePlayback() { return sendApiRequest("PUT", "/v1/me/player/pause"); }
+
+HttpResult SpotifyClient::resumePlayback() { return sendApiRequest("PUT", "/v1/me/player/play"); }
+
 std::string SpotifyClient::downloadImage(const std::string& url) {
   const auto tlsClient = createTlsClient();
   HTTPClient http;
