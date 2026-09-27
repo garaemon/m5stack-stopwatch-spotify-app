@@ -1,6 +1,6 @@
 #pragma once
 
-#include <optional>
+#include <cstdint>
 #include <string>
 
 struct HttpResult {
@@ -14,6 +14,10 @@ class SpotifyClient {
  public:
   SpotifyClient(std::string clientId, std::string refreshToken);
 
+  // Loads the latest rotated refresh token from NVS. Call after the flash
+  // file system is ready and before any request.
+  void begin();
+
   HttpResult fetchCurrentlyPlaying();
   HttpResult fetchLibraryContains(const std::string& trackUri);
   HttpResult saveToLibrary(const std::string& trackUri);
@@ -26,7 +30,9 @@ class SpotifyClient {
 
  private:
   bool refreshAccessToken();
+  bool ensureAccessToken();
   HttpResult sendApiRequest(const char* method, const std::string& path);
+  HttpResult sendAuthorizedRequest(const char* method, const std::string& path);
 
   std::string clientId_;
   std::string refreshToken_;

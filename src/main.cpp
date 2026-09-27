@@ -123,6 +123,7 @@ void setup() {
     view.showMessage("Wi-Fi failed");
     return;
   }
+  spotify.begin();
   view.showMessage("Waiting for Spotify...");
 }
 
