@@ -6,6 +6,7 @@
 struct HttpResult {
   int statusCode = 0;  // Negative on transport errors.
   std::string body;
+  uint32_t retryAfterSeconds = 0;  // From the Retry-After header of a 429.
 };
 
 // Calls the Spotify Web API over HTTPS and refreshes the access token on demand.

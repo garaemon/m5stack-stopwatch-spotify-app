@@ -155,8 +155,10 @@ HttpResult SpotifyClient::sendAuthorizedRequest(const char* method, const std::s
   if (strcmp(method, "GET") != 0) {
     http.addHeader("Content-Length", "0");
   }
+  const char* collectedHeaderKeys[] = {"Retry-After"};
+  http.collectHeaders(collectedHeaderKeys, 1);
   const int statusCode = http.sendRequest(method);
-  HttpResult result{statusCode, readBody(http)};
+  HttpResult result{statusCode, readBody(http), static_cast<uint32_t>(http.header("Retry-After").toInt())};
   http.end();
   return result;
 }
