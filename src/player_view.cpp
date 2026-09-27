@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "display_text.h"
 #include "text_fitting.h"
 
 namespace {
@@ -94,11 +95,11 @@ void PlayerView::showMessage(const char* message, const char* detail) {
   const int32_t messageY = detail != nullptr ? centerY - kMessageLineGapPx / 2 : centerY;
   frameCanvas_.fillScreen(TFT_BLACK);
   frameCanvas_.setTextDatum(datum_t::middle_center);
-  frameCanvas_.setFont(&fonts::lgfxJapanGothicP_24);
+  frameCanvas_.setFont(&fonts::efontJA_24);
   frameCanvas_.setTextColor(TFT_WHITE);
   frameCanvas_.drawString(message, centerX, messageY);
   if (detail != nullptr) {
-    frameCanvas_.setFont(&fonts::lgfxJapanGothicP_20);
+    frameCanvas_.setFont(&fonts::efontJA_16);
     frameCanvas_.setTextColor(TFT_LIGHTGREY);
     frameCanvas_.drawString(detail, centerX, messageY + kMessageLineGapPx);
   }
@@ -106,7 +107,7 @@ void PlayerView::showMessage(const char* message, const char* detail) {
 }
 
 void PlayerView::drawStatusBadge(const char* label) {
-  frameCanvas_.setFont(&fonts::lgfxJapanGothicP_20);
+  frameCanvas_.setFont(&fonts::efontJA_16);
   const int32_t badgeWidth = frameCanvas_.textWidth(label) + kBadgePaddingPx * 2;
   const int32_t badgeLeft = (frameCanvas_.width() - badgeWidth) / 2;
   frameCanvas_.fillRoundRect(badgeLeft, kBadgeTopPx, badgeWidth, kBadgeHeightPx, kBadgeHeightPx / 2, kBadgeColor);
@@ -169,12 +170,12 @@ void PlayerView::drawTrackText(const PlaybackState& playback) {
   const int32_t centerY = frameCanvas_.height() / 2;
   const auto measureWidth = [this](const std::string& text) { return frameCanvas_.textWidth(text.c_str()); };
   frameCanvas_.setTextDatum(datum_t::middle_center);
-  frameCanvas_.setFont(&fonts::lgfxJapanGothicP_24);
+  frameCanvas_.setFont(&fonts::efontJA_24);
   frameCanvas_.setTextColor(TFT_WHITE);
-  const std::string fittedTitle = fitTextToWidth(playback.title, kTitleMaxWidthPx, measureWidth);
+  const std::string fittedTitle = fitTextToWidth(normalizeForDisplay(playback.title), kTitleMaxWidthPx, measureWidth);
   frameCanvas_.drawString(fittedTitle.c_str(), centerX, centerY + kTitleCenterOffsetPx);
-  frameCanvas_.setFont(&fonts::lgfxJapanGothicP_20);
+  frameCanvas_.setFont(&fonts::efontJA_16);
   frameCanvas_.setTextColor(TFT_LIGHTGREY);
-  const std::string fittedArtists = fitTextToWidth(playback.artists, kArtistMaxWidthPx, measureWidth);
+  const std::string fittedArtists = fitTextToWidth(normalizeForDisplay(playback.artists), kArtistMaxWidthPx, measureWidth);
   frameCanvas_.drawString(fittedArtists.c_str(), centerX, centerY + kArtistCenterOffsetPx);
 }
