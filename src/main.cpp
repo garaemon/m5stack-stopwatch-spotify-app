@@ -25,6 +25,7 @@ SpotifyClient spotify(SPOTIFY_CLIENT_ID, SPOTIFY_REFRESH_TOKEN);
 NetworkWorker networkWorker(spotify);
 uint32_t playbackReceivedMs = 0;
 uint32_t lastRenderMs = 0;
+std::optional<uint32_t> vibrationStopMs;
 
 bool connectWifi() {
   WiFi.mode(WIFI_STA);
@@ -39,10 +40,16 @@ bool connectWifi() {
   return true;
 }
 
-void pulseVibration() {
+void startVibration() {
   M5.Power.setVibration(kVibrationLevel);
-  delay(kVibrationDurationMs);
-  M5.Power.setVibration(0);
+  vibrationStopMs = millis() + kVibrationDurationMs;
+}
+
+void stopVibrationWhenDue() {
+  if (vibrationStopMs.has_value() && static_cast<int32_t>(millis() - *vibrationStopMs) >= 0) {
+    M5.Power.setVibration(0);
+    vibrationStopMs.reset();
+  }
 }
 
 void applyEffects(const std::vector<Effect>& effects);
@@ -57,7 +64,7 @@ void renderPlayer() {
 void applyEffect(const Effect& effect) {
   switch (effect.type) {
     case EffectType::kVibrate:
-      pulseVibration();
+      startVibration();
       break;
     case EffectType::kRender:
       renderPlayer();
@@ -120,6 +127,7 @@ void setup() {
 
 void loop() {
   M5.update();
+  stopVibrationWhenDue();
   const std::optional<UserCommand> command = readUserCommand();
   if (command.has_value()) {
     applyEffects(controller.handleCommand(*command));
