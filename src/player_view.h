@@ -24,5 +24,4 @@ class PlayerView {
 
   M5Canvas artworkCanvas_{&M5.Display};
   M5Canvas frameCanvas_{&M5.Display};
-  bool hasArtwork_ = false;
 };
