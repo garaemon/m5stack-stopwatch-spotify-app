@@ -5,15 +5,14 @@
 #include <vector>
 
 #include "app_controller.h"
+#include "network_worker.h"
 #include "player_view.h"
 #include "progress_estimator.h"
 #include "secrets.h"
 #include "spotify_client.h"
-#include "spotify_parser.h"
 
 namespace {
 
-constexpr uint32_t kPollIntervalMs = 3000;
 // 250 ms moves the progress ring about 2 px on a 3-minute track.
 constexpr uint32_t kProgressRenderIntervalMs = 250;
 constexpr uint32_t kWifiTimeoutMs = 20000;
@@ -23,7 +22,7 @@ constexpr uint32_t kVibrationDurationMs = 60;
 AppController controller;
 PlayerView view;
 SpotifyClient spotify(SPOTIFY_CLIENT_ID, SPOTIFY_REFRESH_TOKEN);
-uint32_t lastPollMs = 0;
+NetworkWorker networkWorker(spotify);
 uint32_t playbackReceivedMs = 0;
 uint32_t lastRenderMs = 0;
 
@@ -55,41 +54,16 @@ void renderPlayer() {
   lastRenderMs = millis();
 }
 
-void fetchLikeStatus(const std::string& trackUri) {
-  const HttpResult result = spotify.fetchLibraryContains(trackUri);
-  const std::optional<bool> isLiked = parseLibraryContains(result.body);
-  if (result.statusCode == 200 && isLiked.has_value()) {
-    applyEffects(controller.handleLikeStatus(trackUri, *isLiked));
-  }
-}
-
 void applyEffect(const Effect& effect) {
   switch (effect.type) {
-    case EffectType::kFetchArtwork:
-      view.setArtwork(spotify.downloadImage(effect.argument));
-      break;
-    case EffectType::kFetchLikeStatus:
-      fetchLikeStatus(effect.argument);
-      break;
-    case EffectType::kSaveTrack:
-      spotify.saveToLibrary(effect.argument);
-      break;
-    case EffectType::kRemoveTrack:
-      spotify.removeFromLibrary(effect.argument);
-      break;
-    case EffectType::kSkipNext:
-      spotify.skipToNext();
-      lastPollMs = 0;  // Poll right away so that the new track shows up quickly.
-      break;
-    case EffectType::kSkipPrevious:
-      spotify.skipToPrevious();
-      lastPollMs = 0;
-      break;
     case EffectType::kVibrate:
       pulseVibration();
       break;
     case EffectType::kRender:
       renderPlayer();
+      break;
+    default:
+      networkWorker.request(effect);
       break;
   }
 }
@@ -113,16 +87,19 @@ std::optional<UserCommand> readUserCommand() {
   return std::nullopt;
 }
 
-void pollPlayback() {
-  const HttpResult result = spotify.fetchCurrentlyPlaying();
-  log_i("currently-playing status=%d", result.statusCode);
-  if (result.statusCode != 200 && result.statusCode != 204) {
-    return;
-  }
-  const std::optional<PlaybackState> playback = parseCurrentlyPlaying(result.body);
-  if (playback.has_value()) {
-    playbackReceivedMs = millis();
-    applyEffects(controller.handlePlayback(*playback));
+void applyNetworkResult(const NetworkResult& result) {
+  switch (result.type) {
+    case NetworkResultType::kPlayback:
+      playbackReceivedMs = millis();
+      applyEffects(controller.handlePlayback(result.playback));
+      break;
+    case NetworkResultType::kLikeStatus:
+      applyEffects(controller.handleLikeStatus(result.trackUri, result.isLiked));
+      break;
+    case NetworkResultType::kArtwork:
+      view.setArtwork(result.artworkJpeg);
+      renderPlayer();
+      break;
   }
 }
 
@@ -137,6 +114,7 @@ void setup() {
     return;
   }
   spotify.begin();
+  networkWorker.start();
   view.showMessage("Waiting for Spotify...");
 }
 
@@ -146,11 +124,8 @@ void loop() {
   if (command.has_value()) {
     applyEffects(controller.handleCommand(*command));
   }
-  // TODO(garaemon): Move HTTP calls to a separate FreeRTOS task; each
-  // request blocks button handling for a few hundred milliseconds.
-  if (WiFi.status() == WL_CONNECTED && millis() - lastPollMs >= kPollIntervalMs) {
-    lastPollMs = millis();
-    pollPlayback();
+  while (const std::optional<NetworkResult> result = networkWorker.tryPopResult()) {
+    applyNetworkResult(*result);
   }
   const bool isPlaying = controller.playback().hasTrack && controller.playback().isPlaying;
   if (isPlaying && millis() - lastRenderMs >= kProgressRenderIntervalMs) {
