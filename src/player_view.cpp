@@ -1,5 +1,7 @@
 #include "player_view.h"
 
+#include <utility>
+
 #include "text_fitting.h"
 
 namespace {
@@ -12,9 +14,6 @@ constexpr int kArtistCenterOffsetPx = 120;
 // Widths stay inside the circle chord at each text line with some margin.
 constexpr int kTitleMaxWidthPx = 360;
 constexpr int kArtistMaxWidthPx = 320;
-// The gradient darkens the artwork from this row down to keep text readable.
-constexpr int kShadeStartOffsetPx = 20;
-constexpr int kShadeMinBrightness = 70;  // Out of 256 at the bottom edge.
 constexpr float kRingStartAngleDeg = -90.0f;
 const uint16_t kSpotifyGreen = lgfx::color565(30, 215, 96);
 const uint16_t kHeartRed = lgfx::color565(233, 30, 99);
@@ -45,55 +44,18 @@ const char* describeConnectionProblem(ConnectionStatus status) {
   return nullptr;
 }
 
-// Scales one pixel of an M5Canvas buffer, which stores RGB565 byte-swapped.
-uint16_t scaleSwappedRgb565(uint16_t swappedPixel, int brightness) {
-  const uint16_t rgb565 = static_cast<uint16_t>((swappedPixel >> 8) | (swappedPixel << 8));
-  const uint16_t red = ((rgb565 >> 11) & 0x1F) * brightness >> 8;
-  const uint16_t green = ((rgb565 >> 5) & 0x3F) * brightness >> 8;
-  const uint16_t blue = (rgb565 & 0x1F) * brightness >> 8;
-  const uint16_t scaledRgb565 = static_cast<uint16_t>((red << 11) | (green << 5) | blue);
-  return static_cast<uint16_t>((scaledRgb565 >> 8) | (scaledRgb565 << 8));
-}
-
-void shadeBottomHalf(M5Canvas& canvas) {
-  auto* pixels = static_cast<uint16_t*>(canvas.getBuffer());
-  const int32_t width = canvas.width();
-  const int32_t height = canvas.height();
-  const int32_t shadeStartY = height / 2 + kShadeStartOffsetPx;
-  for (int32_t y = shadeStartY; y < height; ++y) {
-    const int brightness = 256 - (256 - kShadeMinBrightness) * (y - shadeStartY) / (height - shadeStartY);
-    uint16_t* row = pixels + y * width;
-    for (int32_t x = 0; x < width; ++x) {
-      row[x] = scaleSwappedRgb565(row[x], brightness);
-    }
-  }
-}
-
 }  // namespace
 
 void PlayerView::begin() {
   const int32_t width = M5.Display.width();
   const int32_t height = M5.Display.height();
-  artworkCanvas_.setPsram(true);
-  artworkCanvas_.setColorDepth(16);
-  artworkCanvas_.createSprite(width, height);
   frameCanvas_.setPsram(true);
   frameCanvas_.setColorDepth(16);
   frameCanvas_.createSprite(width, height);
   M5.Display.fillScreen(TFT_BLACK);
 }
 
-void PlayerView::setArtwork(const std::string& jpegBytes) {
-  artworkCanvas_.fillScreen(TFT_BLACK);
-  if (jpegBytes.empty()) {
-    return;
-  }
-  const auto* jpegData = reinterpret_cast<const uint8_t*>(jpegBytes.data());
-  // A zero scale makes M5GFX fit the image to the canvas, keeping its aspect.
-  artworkCanvas_.drawJpg(jpegData, jpegBytes.size(), 0, 0, artworkCanvas_.width(),
-                         artworkCanvas_.height(), 0, 0, 0.0f, 0.0f, datum_t::middle_center);
-  shadeBottomHalf(artworkCanvas_);
-}
+void PlayerView::setArtwork(ArtworkImage artwork) { artwork_ = std::move(artwork); }
 
 void PlayerView::render(const PlaybackState& playback, LikeStatus likeStatus, ConnectionStatus connectionStatus) {
   const char* problemLabel = describeConnectionProblem(connectionStatus);
@@ -109,7 +71,11 @@ void PlayerView::render(const PlaybackState& playback, LikeStatus likeStatus, Co
     }
     return;
   }
-  artworkCanvas_.pushSprite(&frameCanvas_, 0, 0);
+  if (artwork_ != nullptr) {
+    artwork_->pushSprite(&frameCanvas_, 0, 0);
+  } else {
+    frameCanvas_.fillScreen(TFT_BLACK);
+  }
   drawTrackText(playback);
   drawProgressRing(playback);
   drawHeart(likeStatus);

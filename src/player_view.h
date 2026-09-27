@@ -5,6 +5,7 @@
 #include <string>
 
 #include "app_controller.h"
+#include "artwork_decoder.h"
 #include "connection_status.h"
 
 // Draws the now-playing screen on the round AMOLED display.
@@ -12,8 +13,8 @@
 class PlayerView {
  public:
   void begin();
-  // Decodes the JPEG once; later renders reuse the decoded pixels.
-  void setArtwork(const std::string& jpegBytes);
+  // Shows the artwork behind every later render; nullptr shows black.
+  void setArtwork(ArtworkImage artwork);
   void render(const PlaybackState& playback, LikeStatus likeStatus, ConnectionStatus connectionStatus);
   // Draws a centered message with an optional smaller second line.
   void showMessage(const char* message, const char* detail = nullptr);
@@ -25,6 +26,6 @@ class PlayerView {
   void drawTrackText(const PlaybackState& playback);
   void drawStatusBadge(const char* label);
 
-  M5Canvas artworkCanvas_{&M5.Display};
+  ArtworkImage artwork_;
   M5Canvas frameCanvas_{&M5.Display};
 };
