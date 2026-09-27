@@ -6,6 +6,7 @@
 
 #include "app_controller.h"
 #include "player_view.h"
+#include "progress_estimator.h"
 #include "secrets.h"
 #include "spotify_client.h"
 #include "spotify_parser.h"
@@ -13,6 +14,8 @@
 namespace {
 
 constexpr uint32_t kPollIntervalMs = 3000;
+// 250 ms moves the progress ring about 2 px on a 3-minute track.
+constexpr uint32_t kProgressRenderIntervalMs = 250;
 constexpr uint32_t kWifiTimeoutMs = 20000;
 constexpr uint8_t kVibrationLevel = 128;
 constexpr uint32_t kVibrationDurationMs = 60;
@@ -21,6 +24,8 @@ AppController controller;
 PlayerView view;
 SpotifyClient spotify(SPOTIFY_CLIENT_ID, SPOTIFY_REFRESH_TOKEN);
 uint32_t lastPollMs = 0;
+uint32_t playbackReceivedMs = 0;
+uint32_t lastRenderMs = 0;
 
 bool connectWifi() {
   WiFi.mode(WIFI_STA);
@@ -42,6 +47,13 @@ void pulseVibration() {
 }
 
 void applyEffects(const std::vector<Effect>& effects);
+
+void renderPlayer() {
+  PlaybackState displayedPlayback = controller.playback();
+  displayedPlayback.progressMs = estimateProgressMs(displayedPlayback, millis() - playbackReceivedMs);
+  view.render(displayedPlayback, controller.likeStatus());
+  lastRenderMs = millis();
+}
 
 void fetchLikeStatus(const std::string& trackUri) {
   const HttpResult result = spotify.fetchLibraryContains(trackUri);
@@ -77,7 +89,7 @@ void applyEffect(const Effect& effect) {
       pulseVibration();
       break;
     case EffectType::kRender:
-      view.render(controller.playback(), controller.likeStatus());
+      renderPlayer();
       break;
   }
 }
@@ -109,6 +121,7 @@ void pollPlayback() {
   }
   const std::optional<PlaybackState> playback = parseCurrentlyPlaying(result.body);
   if (playback.has_value()) {
+    playbackReceivedMs = millis();
     applyEffects(controller.handlePlayback(*playback));
   }
 }
@@ -138,6 +151,10 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED && millis() - lastPollMs >= kPollIntervalMs) {
     lastPollMs = millis();
     pollPlayback();
+  }
+  const bool isPlaying = controller.playback().hasTrack && controller.playback().isPlaying;
+  if (isPlaying && millis() - lastRenderMs >= kProgressRenderIntervalMs) {
+    renderPlayer();
   }
   delay(10);
 }
