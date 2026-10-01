@@ -138,14 +138,19 @@ void applyDisplayPower(DisplayPower power) {
     networkWorker.setPollIntervalMs(kDisplayOffPollIntervalMs);
     return;
   }
-  if (previousPower == DisplayPower::kOff) {
+  const bool isWakingUp = previousPower == DisplayPower::kOff;
+  if (isWakingUp) {
     M5.Display.wakeup();
     networkWorker.setPollIntervalMs(kActivePollIntervalMs);
     // The state kept while the display was off may be 10 s old.
     networkWorker.requestImmediatePoll();
-    renderPlayer();
   }
   M5.Display.setBrightness(power == DisplayPower::kDimmed ? kDimmedBrightness : normalBrightness);
+  // Render after the brightness command: the panel's QSPI bus may cut off a
+  // frame that is still being transferred when another command follows it.
+  if (isWakingUp) {
+    renderPlayer();
+  }
 }
 
 void handleUserInput() {
