@@ -116,8 +116,8 @@ bool SpotifyClient::refreshAccessToken() {
     return false;
   }
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-  const String form = String("grant_type=refresh_token&refresh_token=") + refreshToken_.c_str() +
-                      "&client_id=" + clientId_.c_str();
+  const String form =
+      String("grant_type=refresh_token&refresh_token=") + refreshToken_.c_str() + "&client_id=" + clientId_.c_str();
   const int statusCode = http.POST(form);
   const std::string body = readBody(http);
   http.end();

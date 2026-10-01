@@ -16,10 +16,10 @@ enum class NetworkResultType { kPlayback, kLikeStatus, kArtwork, kConnectionStat
 
 struct NetworkResult {
   NetworkResultType type;
-  PlaybackState playback;   // kPlayback
-  std::string trackUri;     // kLikeStatus
-  bool isLiked = false;     // kLikeStatus
-  ArtworkImage artwork;     // kArtwork; nullptr when the download failed.
+  PlaybackState playback;                                             // kPlayback
+  std::string trackUri;                                               // kLikeStatus
+  bool isLiked = false;                                               // kLikeStatus
+  ArtworkImage artwork;                                               // kArtwork; nullptr when the download failed.
   ConnectionStatus connectionStatus = ConnectionStatus::kConnecting;  // kConnectionStatus
 };
 

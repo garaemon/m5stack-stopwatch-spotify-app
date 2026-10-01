@@ -176,6 +176,7 @@ void PlayerView::drawTrackText(const PlaybackState& playback) {
   frameCanvas_.drawString(fittedTitle.c_str(), centerX, centerY + kTitleCenterOffsetPx);
   frameCanvas_.setFont(&fonts::efontJA_16);
   frameCanvas_.setTextColor(TFT_LIGHTGREY);
-  const std::string fittedArtists = fitTextToWidth(normalizeForDisplay(playback.artists), kArtistMaxWidthPx, measureWidth);
+  const std::string fittedArtists =
+      fitTextToWidth(normalizeForDisplay(playback.artists), kArtistMaxWidthPx, measureWidth);
   frameCanvas_.drawString(fittedArtists.c_str(), centerX, centerY + kArtistCenterOffsetPx);
 }

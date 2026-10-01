@@ -26,10 +26,10 @@ void should_append_ellipsis_when_text_overflows() {
 }
 
 void should_cut_multibyte_text_on_character_boundary() {
-  TEST_ASSERT_EQUAL_STRING("\xE3\x81\x82\xE3\x81\x84...",
-                           fitTextToWidth("\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86\xE3\x81\x88\xE3\x81\x8A\xE3\x81\x8B",
-                                          5, countCharacters)
-                               .c_str());
+  TEST_ASSERT_EQUAL_STRING(
+      "\xE3\x81\x82\xE3\x81\x84...",
+      fitTextToWidth("\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86\xE3\x81\x88\xE3\x81\x8A\xE3\x81\x8B", 5, countCharacters)
+          .c_str());
 }
 
 void should_return_ellipsis_only_when_nothing_else_fits() {

@@ -90,21 +90,15 @@ void should_pick_largest_image_when_none_covers_display() {
   TEST_ASSERT_EQUAL_STRING("https://i.scdn.co/image/medium", playback.artworkUrl.c_str());
 }
 
-void should_report_no_track_for_episode() {
-  TEST_ASSERT_FALSE(parseCurrentlyPlaying(kEpisodeJson).value().hasTrack);
-}
+void should_report_no_track_for_episode() { TEST_ASSERT_FALSE(parseCurrentlyPlaying(kEpisodeJson).value().hasTrack); }
 
 void should_report_no_track_for_empty_body() { TEST_ASSERT_FALSE(parseCurrentlyPlaying("").value().hasTrack); }
 
 void should_return_nullopt_for_invalid_json() { TEST_ASSERT_FALSE(parseCurrentlyPlaying("{broken").has_value()); }
 
-void should_return_true_when_library_contains_track() {
-  TEST_ASSERT_TRUE(parseLibraryContains("[true]").value());
-}
+void should_return_true_when_library_contains_track() { TEST_ASSERT_TRUE(parseLibraryContains("[true]").value()); }
 
-void should_return_false_when_library_lacks_track() {
-  TEST_ASSERT_FALSE(parseLibraryContains("[false]").value());
-}
+void should_return_false_when_library_lacks_track() { TEST_ASSERT_FALSE(parseLibraryContains("[false]").value()); }
 
 void should_return_nullopt_for_empty_contains_array() { TEST_ASSERT_FALSE(parseLibraryContains("[]").has_value()); }
 

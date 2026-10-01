@@ -28,9 +28,7 @@ struct Effect {
   EffectType type;
   std::string argument;
 
-  bool operator==(const Effect& other) const {
-    return type == other.type && argument == other.argument;
-  }
+  bool operator==(const Effect& other) const { return type == other.type && argument == other.argument; }
 };
 
 // Decides which side effects the device must run for each event.
