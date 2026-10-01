@@ -35,6 +35,8 @@ class NetworkWorker {
   std::optional<NetworkResult> tryPopResult() { return results_.tryPop(); }
   // Takes effect after the currently scheduled poll.
   void setPollIntervalMs(uint32_t intervalMs) { pollIntervalMs_ = intervalMs; }
+  // Polls as soon as the worker is idle instead of waiting for the interval.
+  void requestImmediatePoll() { isImmediatePollRequested_ = true; }
 
  private:
   static void runTask(void* worker);
@@ -51,6 +53,7 @@ class NetworkWorker {
   ThreadSafeQueue<NetworkResult> results_;
   uint32_t nextPollMs_ = 0;
   std::atomic<uint32_t> pollIntervalMs_{3000};
+  std::atomic<bool> isImmediatePollRequested_{false};
   bool hasEverConnectedWifi_ = false;
   // Holds the previous, current, and next artworks plus one spare.
   LruCache<std::string, ArtworkImage> artworkCache_{4};

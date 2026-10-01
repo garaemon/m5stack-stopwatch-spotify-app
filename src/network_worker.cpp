@@ -39,6 +39,9 @@ void NetworkWorker::runLoop() {
         handleRequest(*effect);
       }
     }
+    if (isImmediatePollRequested_.exchange(false)) {
+      nextPollMs_ = millis();
+    }
     if (static_cast<int32_t>(millis() - nextPollMs_) >= 0) {
       nextPollMs_ = millis() + pollIntervalMs_;
       hasEverConnectedWifi_ = hasEverConnectedWifi_ || isWifiConnected;

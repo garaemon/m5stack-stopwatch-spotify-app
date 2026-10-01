@@ -141,6 +141,8 @@ void applyDisplayPower(DisplayPower power) {
   if (previousPower == DisplayPower::kOff) {
     M5.Display.wakeup();
     networkWorker.setPollIntervalMs(kActivePollIntervalMs);
+    // The state kept while the display was off may be 10 s old.
+    networkWorker.requestImmediatePoll();
     renderPlayer();
   }
   M5.Display.setBrightness(power == DisplayPower::kDimmed ? kDimmedBrightness : normalBrightness);
