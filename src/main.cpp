@@ -1,3 +1,9 @@
+// Arduino entry point. The loop task owns input, rendering, and the
+// AppController; every Spotify request runs on the NetworkWorker task.
+// Data flows in one cycle: input or a NetworkResult goes into AppController,
+// which returns Effects; applyEffect() runs kRender and kVibrate here and
+// forwards the rest to NetworkWorker, whose results come back through
+// tryPopResult() on the next loop iteration.
 #include <M5Unified.h>
 #include <WiFi.h>
 
@@ -26,6 +32,7 @@ constexpr uint8_t kVibrationLevel = 128;
 // click; M5Unified's 500 ms default made play/pause feel sluggish.
 constexpr uint32_t kButtonClickDecisionMs = 350;
 constexpr uint32_t kVibrationDurationMs = 60;
+constexpr uint32_t kRestartDelayAfterFatalErrorMs = 10000;
 
 AppController controller;
 PlayerView view;
@@ -56,8 +63,6 @@ void stopVibrationWhenDue() {
     vibrationStopMs.reset();
   }
 }
-
-void applyEffects(const std::vector<Effect>& effects);
 
 void renderPlayer() {
   if (appliedDisplayPower == DisplayPower::kOff) {
@@ -118,8 +123,14 @@ void applyNetworkResult(const NetworkResult& result) {
       applyEffects(controller.handleLikeStatus(result.trackUri, result.isLiked));
       break;
     case NetworkResultType::kArtwork:
-      view.setArtwork(result.artwork);
-      renderPlayer();
+      // The worker may finish a request for the previous track after a poll
+      // already reported the next one.
+      // TODO(garaemon): Retry a failed download; the artwork stays black until
+      // the track changes.
+      if (result.artworkUrl == controller.playback().artworkUrl) {
+        view.setArtwork(result.artwork);
+        renderPlayer();
+      }
       break;
     case NetworkResultType::kConnectionStatus:
       applyEffects(controller.handleConnectionStatus(result.connectionStatus));
@@ -181,7 +192,13 @@ void setup() {
   view.begin();
   startWifi();
   spotify.begin();
-  networkWorker.start();
+  if (!networkWorker.start()) {
+    view.showMessage("Out of memory", "Could not start networking");
+    // Restarting is the only recovery; staying up would let the idle display
+    // power policy overwrite the message.
+    delay(kRestartDelayAfterFatalErrorMs);
+    ESP.restart();
+  }
   renderPlayer();
 }
 
