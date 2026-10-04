@@ -24,6 +24,13 @@ enum class EffectType {
   kRender,
 };
 
+// Fetches are idempotent and the controller never repeats them for the same
+// track. Like edits mirror a heart the screen already shows, so dropping them
+// would leave the screen and Spotify disagreeing. Both must survive an
+// offline gap; player commands must not, because replaying stale skips after
+// reconnecting would surprise the user.
+bool shouldSurviveOfflineGap(EffectType type);
+
 struct Effect {
   EffectType type;
   std::string argument;
