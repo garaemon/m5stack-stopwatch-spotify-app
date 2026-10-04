@@ -90,11 +90,16 @@ def exchange_code_for_tokens(client_id: str, code: str, code_verifier: str) -> d
 
 
 def write_refresh_token(secrets_text: str, refresh_token: str) -> None:
-    updated_text = re.sub(
+    updated_text, replacement_count = re.subn(
         r'(#define\s+SPOTIFY_REFRESH_TOKEN\s+)"[^"]*"',
         lambda match: f'{match.group(1)}"{refresh_token}"',
         secrets_text,
     )
+    if replacement_count == 0:
+        sys.exit(
+            f"SPOTIFY_REFRESH_TOKEN not found in {SECRETS_PATH}; add this line:\n"
+            f'#define SPOTIFY_REFRESH_TOKEN "{refresh_token}"'
+        )
     SECRETS_PATH.write_text(updated_text)
 
 
