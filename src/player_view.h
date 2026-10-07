@@ -24,8 +24,14 @@ class PlayerView {
   void drawHeart(LikeStatus likeStatus);
   void drawPauseIcon();
   void drawTrackText(const PlaybackState& playback);
+  void updateFittedText(const PlaybackState& playback);
   void drawStatusBadge(const char* label);
 
   ArtworkImage artwork_;
+  // Fitted text is recomputed only when the track changes, because render()
+  // runs four times a second for the progress ring.
+  std::string fittedTextTrackUri_;
+  std::string fittedTitle_;
+  std::string fittedArtists_;
   M5Canvas frameCanvas_{&M5.Display};
 };

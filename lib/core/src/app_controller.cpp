@@ -74,3 +74,15 @@ std::vector<Effect> AppController::handleConnectionStatus(ConnectionStatus statu
   connectionStatus_ = status;
   return {{EffectType::kRender, ""}};
 }
+
+bool shouldSurviveOfflineGap(EffectType type) {
+  switch (type) {
+    case EffectType::kFetchArtwork:
+    case EffectType::kFetchLikeStatus:
+    case EffectType::kSaveTrack:
+    case EffectType::kRemoveTrack:
+      return true;
+    default:
+      return false;
+  }
+}

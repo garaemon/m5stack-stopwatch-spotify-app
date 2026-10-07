@@ -5,6 +5,7 @@
 #include <NetworkClientSecure.h>
 #include <Preferences.h>
 
+#include <cstring>
 #include <memory>
 #include <utility>
 
@@ -21,6 +22,8 @@ constexpr const char* kRotatedTokenKey = "refresh";
 constexpr uint32_t kTokenExpiryMarginMs = 60 * 1000;
 constexpr uint16_t kHttpTimeoutMs = 10000;
 constexpr int kHttpUnauthorized = 401;
+constexpr int kHttpBadRequest = 400;
+constexpr int kTransportError = -1;
 
 std::unique_ptr<NetworkClientSecure> createTlsClient() {
   auto tlsClient = std::make_unique<NetworkClientSecure>();
@@ -35,6 +38,29 @@ void disableConnectionReuse(HTTPClient& http) { http.setReuse(false); }
 std::string readBody(HTTPClient& http) {
   const String body = http.getString();
   return std::string(body.c_str(), body.length());
+}
+
+// Reads the body straight into a std::string so that the JPEG is held once;
+// getString() would build an Arduino String first and copy it afterwards.
+std::string readBinaryBody(HTTPClient& http) {
+  const int contentLength = http.getSize();
+  if (contentLength <= 0) {
+    // Chunked responses have no Content-Length; getString() decodes them.
+    return readBody(http);
+  }
+  std::string body(static_cast<size_t>(contentLength), '\0');
+  const size_t readBytes = http.getStream().readBytes(&body[0], body.size());
+  // A read that timed out leaves a truncated JPEG that must not be decoded.
+  return readBytes == body.size() ? body : std::string();
+}
+
+// Only a rejection by Spotify means the user must authenticate again; a
+// Wi-Fi blip must not show "login expired".
+int mapTokenFailureToApiStatus(int tokenStatus) {
+  if (tokenStatus == kHttpBadRequest || tokenStatus == kHttpUnauthorized) {
+    return kHttpUnauthorized;
+  }
+  return tokenStatus > 0 ? tokenStatus : kTransportError;
 }
 
 // Returns the refresh token that Spotify rotated most recently. NVS keeps it
@@ -101,19 +127,19 @@ std::string SpotifyClient::downloadImage(const std::string& url) {
     return {};
   }
   const int statusCode = http.GET();
-  const std::string jpegBytes = statusCode == HTTP_CODE_OK ? readBody(http) : std::string();
+  const std::string jpegBytes = statusCode == kHttpStatusOk ? readBinaryBody(http) : std::string();
   http.end();
   log_i("artwork status=%d bytes=%u", statusCode, static_cast<unsigned>(jpegBytes.size()));
   return jpegBytes;
 }
 
-bool SpotifyClient::refreshAccessToken() {
+int SpotifyClient::refreshAccessToken() {
   const auto tlsClient = createTlsClient();
   HTTPClient http;
   http.setTimeout(kHttpTimeoutMs);
   disableConnectionReuse(http);
   if (!http.begin(*tlsClient, kTokenUrl)) {
-    return false;
+    return kTransportError;
   }
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
   const String form =
@@ -123,8 +149,11 @@ bool SpotifyClient::refreshAccessToken() {
   http.end();
   log_i("token refresh status=%d", statusCode);
   const std::optional<AccessToken> token = parseTokenResponse(body);
-  if (statusCode != HTTP_CODE_OK || !token.has_value()) {
-    return false;
+  if (statusCode != kHttpStatusOk) {
+    return statusCode;
+  }
+  if (!token.has_value()) {
+    return kTransportError;
   }
   accessToken_ = token->accessToken;
   accessTokenExpiryMs_ = millis() + token->expiresInSeconds * 1000 - kTokenExpiryMarginMs;
@@ -132,24 +161,29 @@ bool SpotifyClient::refreshAccessToken() {
     refreshToken_ = token->refreshToken;
     storeRotatedRefreshToken(refreshToken_);
   }
-  return true;
+  return kHttpStatusOk;
 }
 
-bool SpotifyClient::ensureAccessToken() {
+int SpotifyClient::ensureAccessToken() {
   const bool isExpired = static_cast<int32_t>(millis() - accessTokenExpiryMs_) >= 0;
   if (!accessToken_.empty() && !isExpired) {
-    return true;
+    return kHttpStatusOk;
   }
   return refreshAccessToken();
 }
 
 HttpResult SpotifyClient::sendApiRequest(const char* method, const std::string& path) {
-  if (!ensureAccessToken()) {
-    return {kHttpUnauthorized, {}};
+  const int tokenStatus = ensureAccessToken();
+  if (tokenStatus != kHttpStatusOk) {
+    return {mapTokenFailureToApiStatus(tokenStatus), {}};
   }
   HttpResult result = sendAuthorizedRequest(method, path);
   // Spotify can revoke an access token before its stated expiry.
-  if (result.statusCode == kHttpUnauthorized && refreshAccessToken()) {
+  if (result.statusCode == kHttpUnauthorized) {
+    const int refreshStatus = refreshAccessToken();
+    if (refreshStatus != kHttpStatusOk) {
+      return {mapTokenFailureToApiStatus(refreshStatus), {}};
+    }
     result = sendAuthorizedRequest(method, path);
   }
   return result;
@@ -162,7 +196,7 @@ HttpResult SpotifyClient::sendAuthorizedRequest(const char* method, const std::s
   disableConnectionReuse(http);
   const std::string url = std::string(kApiBaseUrl) + path;
   if (!http.begin(*tlsClient, url.c_str())) {
-    return {-1, {}};
+    return {kTransportError, {}};
   }
   http.addHeader("Authorization", String("Bearer ") + accessToken_.c_str());
   // HTTPClient omits Content-Length for empty bodies, and Spotify rejects
