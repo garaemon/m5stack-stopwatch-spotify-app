@@ -3,6 +3,7 @@
 #include <atomic>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "app_controller.h"
 #include "artwork_decoder.h"
@@ -19,6 +20,7 @@ struct NetworkResult {
   PlaybackState playback;                                             // kPlayback
   std::string trackUri;                                               // kLikeStatus
   bool isLiked = false;                                               // kLikeStatus
+  std::string artworkUrl;                                             // kArtwork
   ArtworkImage artwork;                                               // kArtwork; nullptr when the download failed.
   ConnectionStatus connectionStatus = ConnectionStatus::kConnecting;  // kConnectionStatus
 };
@@ -29,7 +31,9 @@ class NetworkWorker {
  public:
   explicit NetworkWorker(SpotifyClient& spotify) : spotify_(spotify) {}
 
-  void start();
+  // Returns false when FreeRTOS could not allocate the task; the app then
+  // never polls Spotify, so the caller should show an error.
+  bool start();
   // Accepts only the network effects; the caller handles kVibrate and kRender.
   void request(const Effect& effect) { requests_.push(effect); }
   std::optional<NetworkResult> tryPopResult() { return results_.tryPop(); }
@@ -52,6 +56,7 @@ class NetworkWorker {
   ThreadSafeQueue<Effect> requests_;
   ThreadSafeQueue<NetworkResult> results_;
   uint32_t nextPollMs_ = 0;
+  std::optional<uint32_t> rateLimitedUntilMs_;
   std::atomic<uint32_t> pollIntervalMs_{3000};
   std::atomic<bool> isImmediatePollRequested_{false};
   bool hasEverConnectedWifi_ = false;
@@ -59,4 +64,7 @@ class NetworkWorker {
   LruCache<std::string, ArtworkImage> artworkCache_{4};
   std::string lastPolledTrackUri_;
   std::optional<uint32_t> prefetchDueMs_;
+  // Fetches and like edits received while Wi-Fi was down; only the worker task
+  // touches them.
+  std::vector<Effect> deferredEffects_;
 };

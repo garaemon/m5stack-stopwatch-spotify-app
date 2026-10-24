@@ -1,5 +1,6 @@
 #include "player_view.h"
 
+#include <algorithm>
 #include <utility>
 
 #include "display_text.h"
@@ -52,7 +53,14 @@ void PlayerView::begin() {
   const int32_t height = M5.Display.height();
   frameCanvas_.setPsram(true);
   frameCanvas_.setColorDepth(16);
-  frameCanvas_.createSprite(width, height);
+  if (frameCanvas_.createSprite(width, height) == nullptr) {
+    // Without the off-screen buffer nothing renders; say so on the panel
+    // itself, which is the only surface that still works.
+    log_e("failed to allocate the %dx%d frame canvas", static_cast<int>(width), static_cast<int>(height));
+    M5.Display.setTextDatum(datum_t::middle_center);
+    M5.Display.drawString("Out of memory", width / 2, height / 2);
+    return;
+  }
   M5.Display.fillScreen(TFT_BLACK);
 }
 
@@ -168,15 +176,24 @@ void PlayerView::drawPauseIcon() {
 void PlayerView::drawTrackText(const PlaybackState& playback) {
   const int32_t centerX = frameCanvas_.width() / 2;
   const int32_t centerY = frameCanvas_.height() / 2;
-  const auto measureWidth = [this](const std::string& text) { return frameCanvas_.textWidth(text.c_str()); };
+  updateFittedText(playback);
   frameCanvas_.setTextDatum(datum_t::middle_center);
   frameCanvas_.setFont(&fonts::efontJA_24);
   frameCanvas_.setTextColor(TFT_WHITE);
-  const std::string fittedTitle = fitTextToWidth(normalizeForDisplay(playback.title), kTitleMaxWidthPx, measureWidth);
-  frameCanvas_.drawString(fittedTitle.c_str(), centerX, centerY + kTitleCenterOffsetPx);
+  frameCanvas_.drawString(fittedTitle_.c_str(), centerX, centerY + kTitleCenterOffsetPx);
   frameCanvas_.setFont(&fonts::efontJA_16);
   frameCanvas_.setTextColor(TFT_LIGHTGREY);
-  const std::string fittedArtists =
-      fitTextToWidth(normalizeForDisplay(playback.artists), kArtistMaxWidthPx, measureWidth);
-  frameCanvas_.drawString(fittedArtists.c_str(), centerX, centerY + kArtistCenterOffsetPx);
+  frameCanvas_.drawString(fittedArtists_.c_str(), centerX, centerY + kArtistCenterOffsetPx);
+}
+
+void PlayerView::updateFittedText(const PlaybackState& playback) {
+  if (playback.trackUri == fittedTextTrackUri_) {
+    return;
+  }
+  fittedTextTrackUri_ = playback.trackUri;
+  const auto measureWidth = [this](const std::string& text) { return frameCanvas_.textWidth(text.c_str()); };
+  frameCanvas_.setFont(&fonts::efontJA_24);
+  fittedTitle_ = fitTextToWidth(normalizeForDisplay(playback.title), kTitleMaxWidthPx, measureWidth);
+  frameCanvas_.setFont(&fonts::efontJA_16);
+  fittedArtists_ = fitTextToWidth(normalizeForDisplay(playback.artists), kArtistMaxWidthPx, measureWidth);
 }

@@ -22,7 +22,7 @@ bool containsEffect(const std::vector<Effect>& effects, EffectType type, const s
   return std::find(effects.begin(), effects.end(), Effect{type, argument}) != effects.end();
 }
 
-AppController makeControllerPlaying(bool isLiked) {
+AppController makeControllerPlayingTrack(bool isLiked) {
   AppController controller;
   controller.handlePlayback(makeTrack(kTrackUri, "https://art/1"));
   controller.handleLikeStatus(kTrackUri, isLiked);
@@ -74,28 +74,52 @@ void should_render_on_every_playback_update() {
   TEST_ASSERT_TRUE(containsEffect(effects, EffectType::kRender));
 }
 
+void should_not_fetch_when_playback_stops() {
+  AppController controller = makeControllerPlayingTrack(true);
+
+  const auto effects = controller.handlePlayback(PlaybackState{});
+
+  TEST_ASSERT_FALSE(containsEffect(effects, EffectType::kFetchArtwork));
+  TEST_ASSERT_FALSE(containsEffect(effects, EffectType::kFetchLikeStatus));
+}
+
+void should_keep_fetch_effects_across_offline_gap() {
+  TEST_ASSERT_TRUE(shouldSurviveOfflineGap(EffectType::kFetchArtwork));
+  TEST_ASSERT_TRUE(shouldSurviveOfflineGap(EffectType::kFetchLikeStatus));
+}
+
+void should_keep_like_edits_across_offline_gap() {
+  TEST_ASSERT_TRUE(shouldSurviveOfflineGap(EffectType::kSaveTrack));
+  TEST_ASSERT_TRUE(shouldSurviveOfflineGap(EffectType::kRemoveTrack));
+}
+
+void should_drop_player_commands_during_offline_gap() {
+  TEST_ASSERT_FALSE(shouldSurviveOfflineGap(EffectType::kSkipNext));
+  TEST_ASSERT_FALSE(shouldSurviveOfflineGap(EffectType::kPause));
+}
+
 void should_reset_like_status_when_track_changes() {
-  AppController controller = makeControllerPlaying(true);
+  AppController controller = makeControllerPlayingTrack(true);
 
   controller.handlePlayback(makeTrack(kOtherTrackUri, "https://art/2"));
 
-  TEST_ASSERT_TRUE(controller.likeStatus() == LikeStatus::kUnknown);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(LikeStatus::kUnknown), static_cast<int>(controller.likeStatus()));
 }
 
 void should_skip_next_on_next_command() {
-  AppController controller = makeControllerPlaying(false);
+  AppController controller = makeControllerPlayingTrack(false);
 
   TEST_ASSERT_TRUE(containsEffect(controller.handleCommand(UserCommand::kNext), EffectType::kSkipNext));
 }
 
 void should_skip_previous_on_previous_command() {
-  AppController controller = makeControllerPlaying(false);
+  AppController controller = makeControllerPlayingTrack(false);
 
   TEST_ASSERT_TRUE(containsEffect(controller.handleCommand(UserCommand::kPrevious), EffectType::kSkipPrevious));
 }
 
 void should_save_track_when_toggling_unliked_track() {
-  AppController controller = makeControllerPlaying(false);
+  AppController controller = makeControllerPlayingTrack(false);
 
   const auto effects = controller.handleCommand(UserCommand::kToggleLike);
 
@@ -103,15 +127,15 @@ void should_save_track_when_toggling_unliked_track() {
 }
 
 void should_mark_liked_optimistically_when_saving() {
-  AppController controller = makeControllerPlaying(false);
+  AppController controller = makeControllerPlayingTrack(false);
 
   controller.handleCommand(UserCommand::kToggleLike);
 
-  TEST_ASSERT_TRUE(controller.likeStatus() == LikeStatus::kLiked);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(LikeStatus::kLiked), static_cast<int>(controller.likeStatus()));
 }
 
 void should_remove_track_when_toggling_liked_track() {
-  AppController controller = makeControllerPlaying(true);
+  AppController controller = makeControllerPlayingTrack(true);
 
   const auto effects = controller.handleCommand(UserCommand::kToggleLike);
 
@@ -119,7 +143,7 @@ void should_remove_track_when_toggling_liked_track() {
 }
 
 void should_vibrate_when_toggling_like() {
-  AppController controller = makeControllerPlaying(false);
+  AppController controller = makeControllerPlayingTrack(false);
 
   TEST_ASSERT_TRUE(containsEffect(controller.handleCommand(UserCommand::kToggleLike), EffectType::kVibrate));
 }
@@ -143,7 +167,7 @@ void should_ignore_like_status_of_stale_track() {
 
   controller.handleLikeStatus(kOtherTrackUri, true);
 
-  TEST_ASSERT_TRUE(controller.likeStatus() == LikeStatus::kUnknown);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(LikeStatus::kUnknown), static_cast<int>(controller.likeStatus()));
 }
 
 void should_render_when_like_status_arrives() {
@@ -156,7 +180,8 @@ void should_render_when_like_status_arrives() {
 void should_start_in_connecting_status() {
   AppController controller;
 
-  TEST_ASSERT_TRUE(controller.connectionStatus() == ConnectionStatus::kConnecting);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(ConnectionStatus::kConnecting),
+                        static_cast<int>(controller.connectionStatus()));
 }
 
 void should_store_new_connection_status() {
@@ -164,7 +189,8 @@ void should_store_new_connection_status() {
 
   controller.handleConnectionStatus(ConnectionStatus::kWifiDisconnected);
 
-  TEST_ASSERT_TRUE(controller.connectionStatus() == ConnectionStatus::kWifiDisconnected);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(ConnectionStatus::kWifiDisconnected),
+                        static_cast<int>(controller.connectionStatus()));
 }
 
 void should_render_when_connection_status_changes() {
@@ -181,19 +207,19 @@ void should_not_render_when_connection_status_is_unchanged() {
 }
 
 void should_seek_to_start_on_restart_command() {
-  AppController controller = makeControllerPlaying(false);
+  AppController controller = makeControllerPlayingTrack(false);
 
   TEST_ASSERT_TRUE(containsEffect(controller.handleCommand(UserCommand::kRestartTrack), EffectType::kSeekToStart));
 }
 
 void should_pause_when_toggling_playing_track() {
-  AppController controller = makeControllerPlaying(false);
+  AppController controller = makeControllerPlayingTrack(false);
 
   TEST_ASSERT_TRUE(containsEffect(controller.handleCommand(UserCommand::kTogglePlayback), EffectType::kPause));
 }
 
 void should_mark_paused_optimistically_when_pausing() {
-  AppController controller = makeControllerPlaying(false);
+  AppController controller = makeControllerPlayingTrack(false);
 
   controller.handleCommand(UserCommand::kTogglePlayback);
 
@@ -210,7 +236,7 @@ void should_resume_when_toggling_paused_track() {
 }
 
 void should_render_when_toggling_playback() {
-  AppController controller = makeControllerPlaying(false);
+  AppController controller = makeControllerPlayingTrack(false);
 
   TEST_ASSERT_TRUE(containsEffect(controller.handleCommand(UserCommand::kTogglePlayback), EffectType::kRender));
 }
@@ -231,6 +257,10 @@ int main() {
   RUN_TEST(should_not_refetch_artwork_for_same_track);
   RUN_TEST(should_not_refetch_artwork_when_next_track_shares_album);
   RUN_TEST(should_render_on_every_playback_update);
+  RUN_TEST(should_not_fetch_when_playback_stops);
+  RUN_TEST(should_keep_fetch_effects_across_offline_gap);
+  RUN_TEST(should_keep_like_edits_across_offline_gap);
+  RUN_TEST(should_drop_player_commands_during_offline_gap);
   RUN_TEST(should_reset_like_status_when_track_changes);
   RUN_TEST(should_skip_next_on_next_command);
   RUN_TEST(should_skip_previous_on_previous_command);

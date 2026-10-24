@@ -15,6 +15,7 @@ constexpr uint32_t kDefaultRetryAfterSeconds = 30;
 // Leaves time for the loop task to request the current artwork first, so
 // that prefetching the next one never delays it.
 constexpr uint32_t kPrefetchDelayMs = 500;
+
 // TLS handshakes in mbedTLS and JPEG decoding need a deep stack.
 constexpr uint32_t kTaskStackBytes = 20480;
 constexpr UBaseType_t kTaskPriority = 1;
@@ -23,8 +24,14 @@ constexpr BaseType_t kTaskCore = 0;
 
 }  // namespace
 
-void NetworkWorker::start() {
-  xTaskCreatePinnedToCore(runTask, "network", kTaskStackBytes, this, kTaskPriority, nullptr, kTaskCore);
+bool NetworkWorker::start() {
+  const BaseType_t created =
+      xTaskCreatePinnedToCore(runTask, "network", kTaskStackBytes, this, kTaskPriority, nullptr, kTaskCore);
+  if (created != pdPASS) {
+    log_e("failed to create the network task");
+    return false;
+  }
+  return true;
 }
 
 void NetworkWorker::runTask(void* worker) { static_cast<NetworkWorker*>(worker)->runLoop(); }
@@ -32,17 +39,34 @@ void NetworkWorker::runTask(void* worker) { static_cast<NetworkWorker*>(worker)-
 void NetworkWorker::runLoop() {
   while (true) {
     const bool isWifiConnected = WiFi.status() == WL_CONNECTED;
-    // Drop requests made while offline; replaying stale skips after
-    // reconnecting would surprise the user.
+    // Deferred effects go first so that they run in the order they were issued.
+    if (isWifiConnected) {
+      std::vector<Effect> deferredEffects;
+      deferredEffects.swap(deferredEffects_);
+      for (const Effect& deferredEffect : deferredEffects) {
+        handleRequest(deferredEffect);
+      }
+    }
+    // Player commands made while offline are dropped, because replaying stale
+    // skips after reconnecting would surprise the user. Fetches and like edits
+    // wait instead.
     while (const std::optional<Effect> effect = requests_.tryPop()) {
       if (isWifiConnected) {
         handleRequest(*effect);
+      } else if (shouldSurviveOfflineGap(effect->type)) {
+        deferredEffects_.push_back(*effect);
       }
     }
     if (isImmediatePollRequested_.exchange(false)) {
       nextPollMs_ = millis();
     }
-    if (static_cast<int32_t>(millis() - nextPollMs_) >= 0) {
+    if (rateLimitedUntilMs_.has_value() && static_cast<int32_t>(millis() - *rateLimitedUntilMs_) >= 0) {
+      rateLimitedUntilMs_.reset();
+    }
+    // A 429 deadline outranks the player-command and wake-up shortcuts that
+    // move nextPollMs_ earlier.
+    const bool isRateLimited = rateLimitedUntilMs_.has_value();
+    if (!isRateLimited && static_cast<int32_t>(millis() - nextPollMs_) >= 0) {
       nextPollMs_ = millis() + pollIntervalMs_;
       hasEverConnectedWifi_ = hasEverConnectedWifi_ || isWifiConnected;
       if (isWifiConnected) {
@@ -67,6 +91,7 @@ void NetworkWorker::handleRequest(const Effect& effect) {
   switch (effect.type) {
     case EffectType::kFetchArtwork: {
       NetworkResult result{NetworkResultType::kArtwork};
+      result.artworkUrl = effect.argument;
       result.artwork = loadArtwork(effect.argument);
       results_.push(std::move(result));
       break;
@@ -114,7 +139,8 @@ void NetworkWorker::pollPlayback() {
   if (status == ConnectionStatus::kRateLimited) {
     const uint32_t retryAfterSeconds =
         response.retryAfterSeconds > 0 ? response.retryAfterSeconds : kDefaultRetryAfterSeconds;
-    nextPollMs_ = millis() + retryAfterSeconds * 1000;
+    rateLimitedUntilMs_ = millis() + retryAfterSeconds * 1000;
+    nextPollMs_ = *rateLimitedUntilMs_;
   }
   if (status != ConnectionStatus::kOk) {
     return;
@@ -147,7 +173,7 @@ ArtworkImage NetworkWorker::loadArtwork(const std::string& url) {
 
 void NetworkWorker::prefetchNextArtwork() {
   const HttpResult response = spotify_.fetchQueue();
-  if (response.statusCode != 200) {
+  if (!response.isOk()) {
     return;
   }
   const std::optional<std::string> nextArtworkUrl = parseNextQueuedArtworkUrl(response.body);
@@ -160,7 +186,9 @@ void NetworkWorker::prefetchNextArtwork() {
 void NetworkWorker::fetchLikeStatus(const std::string& trackUri) {
   const HttpResult response = spotify_.fetchLibraryContains(trackUri);
   const std::optional<bool> isLiked = parseLibraryContains(response.body);
-  if (response.statusCode != 200 || !isLiked.has_value()) {
+  // TODO(garaemon): Retry a failed lookup; the heart stays hidden until the
+  // track changes.
+  if (!response.isOk() || !isLiked.has_value()) {
     return;
   }
   NetworkResult result{NetworkResultType::kLikeStatus};
